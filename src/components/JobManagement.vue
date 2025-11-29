@@ -66,6 +66,20 @@
               {{ record.status }}
             </a-tag>
           </template>
+          <!-- Job 操作按鈕 -->
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click.stop="handleJobRetry(record)">
+                <ReloadOutlined /> 重試
+              </a-button>
+              <a-button type="link" size="small" @click.stop="handleJobCancel(record)">
+                <StopOutlined /> 取消
+              </a-button>
+              <a-button type="link" danger size="small" @click.stop="handleJobDelete(record)">
+                <DeleteOutlined /> 刪除
+              </a-button>
+            </a-space>
+          </template>
         </template>
 
         <!-- 展開的內容 - 顯示 JobFile 列表 -->
@@ -89,19 +103,6 @@
                 <template #bodyCell="{ column, record: file }">
                   <template v-if="column.key === 'fileSize'">
                     {{ formatFileSize(file.fileSize) }}
-                  </template>
-                  <template v-if="column.key === 'action'">
-                    <a-space>
-                      <a-button type="link" size="small" @click="handleRetry(file)">
-                        <ReloadOutlined /> 重試
-                      </a-button>
-                      <a-button type="link" size="small" @click="handleCancel(file)">
-                        <StopOutlined /> 取消
-                      </a-button>
-                      <a-button type="link" danger size="small" @click="handleDelete(file)">
-                        <DeleteOutlined /> 刪除
-                      </a-button>
-                    </a-space>
                   </template>
                 </template>
               </a-table>
@@ -163,10 +164,16 @@ const columns = [
     dataIndex: 'timestamp', 
     key: 'timestamp',
     width: 200
+  },
+  { 
+    title: '操作', 
+    key: 'action',
+    width: 250,
+    fixed: 'right'
   }
 ];
 
-// JobFile 表格欄位
+// JobFile 表格欄位（移除操作欄）
 const fileColumns = [
   { 
     title: 'File ID', 
@@ -197,12 +204,6 @@ const fileColumns = [
     dataIndex: 'uploadTime', 
     key: 'uploadTime',
     width: 180
-  },
-  { 
-    title: '操作', 
-    key: 'action',
-    width: 200,
-    fixed: 'right'
   }
 ];
 
@@ -355,36 +356,37 @@ const handleSearch = () => {
   }, 500);
 };
 
-const handleRetry = (file) => {
-  message.loading(`正在重試處理檔案: ${file.fileName}...`, 1);
+// Job 操作函數
+const handleJobRetry = (job) => {
+  message.loading(`正在重試 Job: ${job.jobId}...`, 1);
   setTimeout(() => {
-    message.success(`檔案重試成功: ${file.fileName}`);
+    message.success(`Job 重試成功: ${job.jobId}`);
   }, 1000);
   // 實際重試邏輯
 };
 
-const handleCancel = (file) => {
+const handleJobCancel = (job) => {
   Modal.confirm({
     title: '確認取消',
-    content: `確定要取消處理檔案「${file.fileName}」嗎？`,
+    content: `確定要取消 Job「${job.jobId}」嗎？`,
     okText: '確定',
     cancelText: '取消',
     onOk() {
-      message.success(`已取消處理: ${file.fileName}`);
+      message.success(`已取消 Job: ${job.jobId}`);
       // 實際取消邏輯
     }
   });
 };
 
-const handleDelete = (file) => {
+const handleJobDelete = (job) => {
   Modal.confirm({
     title: '確認刪除',
-    content: `確定要刪除檔案「${file.fileName}」嗎？此操作無法復原。`,
+    content: `確定要刪除 Job「${job.jobId}」嗎？此操作無法復原。`,
     okText: '確定刪除',
     cancelText: '取消',
     okType: 'danger',
     onOk() {
-      message.success(`已刪除檔案: ${file.fileName}`);
+      message.success(`已刪除 Job: ${job.jobId}`);
       // 實際刪除邏輯
     }
   });

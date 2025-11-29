@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@azure/msal-browser": "^4.26.2",
     "ant-design-vue": "^4.2.6",
     "vue": "^3.5.24",
     "vue-router": "^4.6.3"

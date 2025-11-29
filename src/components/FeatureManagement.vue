@@ -17,6 +17,9 @@
         :data-source="featureData"
         :pagination="false"
         :scroll="{ y: 'calc(100vh - 350px)' }"
+        :expandedRowKeys="expandedRowKeys"
+        @expand="handleExpand"
+        :expandRowByClick="true"
       >
         <template #bodyCell="{ column, record }">
           <!-- 編輯按鈕 -->
@@ -38,7 +41,11 @@
 
           <!-- 新增使用者按鈕 -->
           <template v-if="column.key === 'action'">
-            <a-button type="primary" ghost @click="showAddUserModal(record)">
+            <a-button 
+              type="primary" 
+              ghost 
+              @click.stop="showAddUserModal(record)"
+            >
               新增使用者
             </a-button>
           </template>
@@ -57,9 +64,9 @@
             >
               <template #bodyCell="{ column, record: user }">
                 <template v-if="column.key === 'email'">
-                  <!-- <span style="color: #ef4444; text-decoration: underline wavy"> -->
+                  <span style="color: #ef4444; text-decoration: underline wavy">
                     {{ user.email }}
-                  <!-- </span> -->
+                  </span>
                 </template>
               </template>
             </a-table>
@@ -133,9 +140,9 @@
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'email'">
-              <!-- <span style="color: #ef4444; text-decoration: underline wavy"> -->
+              <span style="color: #ef4444; text-decoration: underline wavy">
                 {{ record.email }}
-              <!-- </span> -->
+              </span>
             </template>
           </template>
         </a-table>
@@ -170,6 +177,7 @@ const featureForm = ref({
 // 使用者搜尋
 const userSearchText = ref('');
 const selectedUserKeys = ref([]);
+const expandedRowKeys = ref([]);
 
 // 功能表格欄位
 const featureColumns = [
@@ -207,7 +215,8 @@ const featureColumns = [
 const userColumns = [
   { title: 'customer_ID', dataIndex: 'customerId', key: 'customerId', width: 150 },
   { title: 'Username', dataIndex: 'username', key: 'username', width: 150 },
-  { title: 'email', dataIndex: 'email', key: 'email', width: 250 }
+  { title: 'email', dataIndex: 'email', key: 'email', width: 200 },
+  { title: '狀態', key: 'status', width: 120, align: 'center' }
 ];
 
 // 功能資料
@@ -218,8 +227,8 @@ const featureData = ref([
     description: 'VESA',
     enabled: true,
     users: [
-      { key: 'u1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com' },
-      { key: 'u2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com' }
+      { key: 'u1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com', enabled: true },
+      { key: 'u2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com', enabled: true }
     ]
   },
   {
@@ -228,7 +237,7 @@ const featureData = ref([
     description: 'BMP 工具',
     enabled: false,
     users: [
-      { key: 'u3', customerId: 'NVT03134', username: 'Hailey', email: 'Hailey@example.com' }
+      { key: 'u3', customerId: 'NVT03134', username: 'Hailey', email: 'Hailey@example.com', enabled: false }
     ]
   }
 ]);
@@ -245,12 +254,26 @@ const allUsers = ref([
   { key: 'u8', customerId: 'NVT02131', username: 'Angela', email: 'Angela@example.com' }
 ]);
 
-// 篩選後的可用使用者
+// 篩選後的可用使用者（排除已加入該功能的使用者）
 const filteredAvailableUsers = computed(() => {
-  if (!userSearchText.value) return allUsers.value;
-  return allUsers.value.filter(user =>
-    user.username.toLowerCase().includes(userSearchText.value.toLowerCase())
+  if (!currentFeature.value) return [];
+  
+  // 獲取已加入該功能的使用者 key
+  const existingUserKeys = currentFeature.value.users.map(u => u.key);
+  
+  // 過濾掉已加入的使用者
+  let availableUsers = allUsers.value.filter(user => 
+    !existingUserKeys.includes(user.key)
   );
+  
+  // 如果有搜尋文字，再進行搜尋篩選
+  if (userSearchText.value) {
+    availableUsers = availableUsers.filter(user =>
+      user.username.toLowerCase().includes(userSearchText.value.toLowerCase())
+    );
+  }
+  
+  return availableUsers;
 });
 
 // 顯示新增功能 Modal
@@ -350,7 +373,13 @@ const handleBatchAdd = () => {
     return;
   }
 
-  currentFeature.value.users.push(...newUsers);
+  // 新增使用者時，預設為啟用狀態
+  const usersToAdd = newUsers.map(user => ({
+    ...user,
+    enabled: true
+  }));
+
+  currentFeature.value.users.push(...usersToAdd);
   message.success(`成功新增 ${newUsers.length} 位使用者`);
   
   selectedUserKeys.value = [];
@@ -366,6 +395,21 @@ const handleUserSubmit = () => {
 const handleUserCancel = () => {
   userModalVisible.value = false;
   selectedUserKeys.value = [];
+};
+
+// 展開/收合功能
+const handleExpand = (expanded, record) => {
+  if (expanded) {
+    expandedRowKeys.value = [record.key];
+  } else {
+    expandedRowKeys.value = [];
+  }
+};
+
+// 使用者狀態變更
+const handleUserStatusChange = (feature, user) => {
+  const status = user.enabled ? '啟用' : '停用';
+  message.success(`使用者「${user.username}」在功能「${feature.featureName}」已${status}`);
 };
 </script>
 
@@ -457,6 +501,10 @@ const handleUserCancel = () => {
 }
 
 /* 表格樣式 */
+:deep(.ant-table-tbody > tr) {
+  cursor: pointer;
+}
+
 :deep(.ant-table-tbody > tr:nth-child(even)) {
   background-color: #f9fafb;
 }
@@ -490,3 +538,5 @@ const handleUserCancel = () => {
   background: #94a3b8;
 }
 </style>
+
+

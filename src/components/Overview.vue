@@ -59,7 +59,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+// import { ref } from 'vue';
+import { api } from '../utils/api';
+import { onMounted, ref } from 'vue';
 
 const stats = ref({
   totalCustomer: 50,
@@ -67,6 +69,18 @@ const stats = ref({
   jobRunning: 5,
   jobFailed: 125
 });
+
+
+onMounted(async () => {
+  try {
+    // API 會自動帶上 JWT Token
+    const response = await api.get('/dashboard/stats');
+    stats.value = response.data;
+  } catch (error) {
+    console.error('取得統計資料失敗:', error);
+  }
+});
+
 </script>
 
 <style scoped>

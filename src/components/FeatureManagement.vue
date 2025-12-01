@@ -159,6 +159,23 @@ import {
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 
+// -----------20251201-----------
+import { api } from '../utils/api';
+
+const updateFeatureStatus = async (featureId, enabled) => {
+  try {
+    await api.patch(`/features/${featureId}`, {
+      enabled: enabled
+    });
+    message.success('功能狀態更新成功！');
+  } catch (error) {
+    console.error('更新功能狀態失敗:', error);
+  }
+};
+// -----------20251201-----------
+
+
+
 // Modal 控制
 const featureModalVisible = ref(false);
 const userModalVisible = ref(false);

@@ -94,11 +94,17 @@ const handleMenuClick = ({ key }) => {
   selectedKeys.value = [key];
 };
 
-const handleLogout = () => {
-  message.success('登出成功！');
-  // 清除登入狀態（如果有使用 localStorage 或 session）
-  // localStorage.removeItem('token');
-  router.push('/login');
+import { logout } from '../utils/auth';
+
+const handleLogout = async () => {
+  try {
+    await logout();
+    message.success('登出成功！');
+    router.push('/login');
+  } catch (error) {
+    console.error('登出失敗:', error);
+    message.error('登出失敗，請重試');
+  }
 };
 </script>
 

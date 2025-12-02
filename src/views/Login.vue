@@ -12,59 +12,9 @@
         </div>
       </div>
 
-      <!-- 一般登入表單 -->
-      <a-form
-        :model="loginForm"
-        @finish="handleLogin"
-        layout="vertical"
-      >
-        <a-form-item
-          label="Username"
-          name="username"
-          :rules="[{ required: true, message: '請輸入用戶名稱!' }]"
-        >
-          <a-input
-            v-model:value="loginForm.username"
-            size="large"
-            placeholder="請輸入用戶名稱"
-          >
-            <template #prefix>
-              <UserOutlined />
-            </template>
-          </a-input>
-        </a-form-item>
-
-        <a-form-item
-          label="Password"
-          name="password"
-          :rules="[{ required: true, message: '請輸入密碼!' }]"
-        >
-          <a-input-password
-            v-model:value="loginForm.password"
-            size="large"
-            placeholder="請輸入密碼"
-          >
-            <template #prefix>
-              <LockOutlined />
-            </template>
-          </a-input-password>
-        </a-form-item>
-
-        <a-form-item>
-          <a-button 
-            type="primary" 
-            html-type="submit" 
-            size="large" 
-            block 
-            :loading="loading"
-          >
-            登入
-          </a-button>
-        </a-form-item>
-      </a-form>
-
-      <!-- 分隔線 -->
-      <a-divider>或</a-divider>
+      <div class="login-description">
+        <p>請使用您的 Microsoft 帳戶登入</p>
+      </div>
 
       <!-- Azure AD 登入按鈕 -->
       <a-button 
@@ -79,6 +29,17 @@
         </template>
         使用 Microsoft 帳戶登入
       </a-button>
+
+      <div class="login-footer">
+        <a-alert 
+          v-if="errorMessage"
+          :message="errorMessage" 
+          type="error" 
+          closable
+          @close="errorMessage = ''"
+          style="margin-top: 16px"
+        />
+      </div>
     </a-card>
   </div>
 </template>
@@ -87,8 +48,6 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { 
-  UserOutlined, 
-  LockOutlined, 
   ToolOutlined,
   WindowsOutlined 
 } from '@ant-design/icons-vue';
@@ -96,13 +55,8 @@ import { message } from 'ant-design-vue';
 import { PublicClientApplication } from '@azure/msal-browser';
 
 const router = useRouter();
-const loading = ref(false);
 const azureLoading = ref(false);
-
-const loginForm = ref({
-  username: '',
-  password: ''
-});
+const errorMessage = ref('');
 
 // MSAL 配置
 const msalConfig = {
@@ -137,19 +91,9 @@ onMounted(async () => {
     }
   } catch (error) {
     console.error('MSAL 初始化錯誤:', error);
+    errorMessage.value = 'Azure AD 服務初始化失敗，請重新整理頁面';
   }
 });
-
-// 一般登入
-const handleLogin = () => {
-  loading.value = true;
-  // 模擬登入
-  setTimeout(() => {
-    loading.value = false;
-    message.success('登入成功！');
-    router.push('/dashboard');
-  }, 1000);
-};
 
 // Azure AD 登入
 const handleAzureLogin = async () => {
@@ -159,6 +103,7 @@ const handleAzureLogin = async () => {
   }
 
   azureLoading.value = true;
+  errorMessage.value = '';
 
   try {
     // 使用彈出視窗登入
@@ -169,8 +114,11 @@ const handleAzureLogin = async () => {
     
     if (error.errorCode === 'user_cancelled') {
       message.warning('登入已取消');
+    } else if (error.errorCode === 'popup_window_error') {
+      errorMessage.value = '無法開啟登入視窗，請檢查瀏覽器彈出視窗設定';
     } else {
-      message.error('Azure AD 登入失敗: ' + error.message);
+      errorMessage.value = 'Azure AD 登入失敗: ' + error.message;
+      message.error('登入失敗，請稍後再試');
     }
   } finally {
     azureLoading.value = false;
@@ -224,9 +172,10 @@ const getAccessToken = async () => {
 }
 
 .login-card {
-  width: 400px;
+  width: 420px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   border-radius: 12px;
+  padding: 20px;
 }
 
 .logo-section {
@@ -264,11 +213,24 @@ const getAccessToken = async () => {
   margin-top: 4px;
 }
 
+.login-description {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-description p {
+  color: #64748b;
+  font-size: 15px;
+  margin: 0;
+}
+
 .azure-login-button {
   background: #0078d4;
   color: white;
   border: none;
   font-weight: 500;
+  height: 48px;
+  font-size: 16px;
   transition: all 0.3s ease;
 }
 
@@ -276,15 +238,15 @@ const getAccessToken = async () => {
   background: #106ebe !important;
   color: white !important;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 120, 212, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 120, 212, 0.4);
 }
 
 .azure-login-button:active {
   transform: translateY(0);
 }
 
-:deep(.ant-divider-inner-text) {
-  color: #64748b;
+.login-footer {
+  margin-top: 16px;
 }
 </style>
 

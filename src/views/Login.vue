@@ -1,4 +1,3 @@
-<!-- Login.vue -->
 <template>
   <div class="login-container">
     <a-card class="login-card" :bordered="false">
@@ -63,39 +62,47 @@ const msalConfig = {
   auth: {
     clientId: 'YOUR_CLIENT_ID', // 替換為你的 Azure AD Client ID
     authority: 'https://login.microsoftonline.com/YOUR_TENANT_ID', // 替換為你的 Tenant ID
-    redirectUri: window.location.origin + '/dashboard', // 登入成功後跳轉的 URL
+    redirectUri: window.location.origin + '/login', // ⚠️ 改為 /login
   },
   cache: {
-    cacheLocation: 'sessionStorage', // 可選 'localStorage' 或 'sessionStorage'
+    cacheLocation: 'sessionStorage',
     storeAuthStateInCookie: false,
   }
 };
 
 // 登入請求配置
 const loginRequest = {
-  scopes: ['User.Read'] // 請求的權限範圍
+  scopes: ['User.Read']
 };
 
 // 初始化 MSAL 實例
 let msalInstance = null;
 
 onMounted(async () => {
+  console.log('🔍 Login 頁面載入');
+  
   try {
     msalInstance = new PublicClientApplication(msalConfig);
     await msalInstance.initialize();
+    console.log('✅ MSAL 初始化成功');
     
     // 處理重定向回來的回應
     const response = await msalInstance.handleRedirectPromise();
+    console.log('📩 Redirect Response:', response);
+    
     if (response) {
-      handleAzureLoginSuccess(response);
+      console.log('✅ 檢測到登入回應');
+      await handleAzureLoginSuccess(response);
+    } else {
+      console.log('ℹ️ 無登入回應，顯示登入按鈕');
     }
   } catch (error) {
-    console.error('MSAL 初始化錯誤:', error);
+    console.error('❌ MSAL 初始化錯誤:', error);
     errorMessage.value = 'Azure AD 服務初始化失敗，請重新整理頁面';
   }
 });
 
-// Azure AD 登入
+// Azure AD 登入 (使用 Redirect 方式)
 const handleAzureLogin = async () => {
   if (!msalInstance) {
     message.error('MSAL 尚未初始化，請稍後再試');
@@ -106,11 +113,43 @@ const handleAzureLogin = async () => {
   errorMessage.value = '';
 
   try {
-    // 使用彈出視窗登入
-    const response = await msalInstance.loginPopup(loginRequest);
-    handleAzureLoginSuccess(response);
+    console.log('🚀 開始 Azure AD 登入流程');
+    
+    // 方法 1: 使用 Redirect (較穩定)
+    await msalInstance.loginRedirect(loginRequest);
+    
+    // 注意: loginRedirect 會直接跳轉，以下程式碼不會執行
+    
   } catch (error) {
-    console.error('Azure AD 登入錯誤:', error);
+    console.error('❌ Azure AD 登入錯誤:', error);
+    azureLoading.value = false;
+    
+    if (error.errorCode === 'user_cancelled') {
+      message.warning('登入已取消');
+    } else {
+      errorMessage.value = 'Azure AD 登入失敗: ' + error.message;
+      message.error('登入失敗，請稍後再試');
+    }
+  }
+};
+
+// 如果要使用 Popup 方式，取消以下註解
+/*
+const handleAzureLoginPopup = async () => {
+  if (!msalInstance) {
+    message.error('MSAL 尚未初始化，請稍後再試');
+    return;
+  }
+
+  azureLoading.value = true;
+  errorMessage.value = '';
+
+  try {
+    console.log('🚀 開始 Azure AD 登入 (Popup)');
+    const response = await msalInstance.loginPopup(loginRequest);
+    await handleAzureLoginSuccess(response);
+  } catch (error) {
+    console.error('❌ Azure AD 登入錯誤:', error);
     
     if (error.errorCode === 'user_cancelled') {
       message.warning('登入已取消');
@@ -124,22 +163,34 @@ const handleAzureLogin = async () => {
     azureLoading.value = false;
   }
 };
+*/
 
 // Azure AD 登入成功處理
-const handleAzureLoginSuccess = (response) => {
-  console.log('Azure AD 登入成功:', response);
+const handleAzureLoginSuccess = async (response) => {
+  console.log('✅ Azure AD 登入成功:', response);
   
   // 獲取帳戶資訊
   const account = response.account;
-  console.log('使用者資訊:', account);
+  console.log('👤 使用者資訊:', account);
   
-  // 儲存 token（實際應用中應該傳送到後端驗證）
+  // 儲存 token
   sessionStorage.setItem('azure_token', response.accessToken);
   sessionStorage.setItem('user_name', account.name);
   sessionStorage.setItem('user_email', account.username);
   
   message.success(`歡迎, ${account.name}！`);
-  router.push('/dashboard');
+  
+  // 確保跳轉
+  console.log('🔀 準備跳轉到 /dashboard');
+  
+  try {
+    await router.push('/dashboard');
+    console.log('✅ 路由跳轉成功');
+  } catch (routerError) {
+    console.error('❌ 路由跳轉失敗:', routerError);
+    // 如果 router.push 失敗，使用 window.location
+    window.location.href = '/dashboard';
+  }
 };
 
 // 取得 Access Token（用於 API 呼叫）
@@ -156,7 +207,7 @@ const getAccessToken = async () => {
     });
     return response.accessToken;
   } catch (error) {
-    console.error('取得 Token 錯誤:', error);
+    console.error('❌ 取得 Token 錯誤:', error);
     return null;
   }
 };
@@ -249,62 +300,3 @@ const getAccessToken = async () => {
   margin-top: 16px;
 }
 </style>
-
-
-<!-- ============================================ -->
-<!-- package.json 需要安裝的套件 -->
-<!-- ============================================ -->
-{
-  "dependencies": {
-    "@azure/msal-browser": "^3.7.0"
-  }
-}
-
-<!-- 安裝指令 -->
-<!-- npm install @azure/msal-browser -->
-
-
-<!-- ============================================ -->
-<!-- Azure AD 設定步驟 -->
-<!-- ============================================ -->
-
-1. 前往 Azure Portal (https://portal.azure.com)
-2. 進入「Azure Active Directory」
-3. 選擇「App registrations」→「New registration」
-4. 設定應用程式：
-   - Name: MYMD Admin
-   - Supported account types: 選擇適合的類型
-   - Redirect URI: 
-     * Platform: Single-page application (SPA)
-     * URI: http://localhost:5173/dashboard (開發環境)
-            https://yourdomain.com/dashboard (正式環境)
-
-5. 註冊後，複製以下資訊：
-   - Application (client) ID → 替換 YOUR_CLIENT_ID
-   - Directory (tenant) ID → 替換 YOUR_TENANT_ID
-
-6. 設定 API 權限：
-   - 點選「API permissions」
-   - 「Add a permission」→「Microsoft Graph」
-   - 選擇「Delegated permissions」
-   - 勾選「User.Read」
-   - 點選「Grant admin consent」
-
-7. 設定驗證：
-   - 點選「Authentication」
-   - 確認 Redirect URIs 正確
-   - 勾選「Access tokens」和「ID tokens」
-
-
-<!-- ============================================ -->
-<!-- 程式碼中需要修改的地方 -->
-<!-- ============================================ -->
-
-const msalConfig = {
-  auth: {
-    clientId: 'YOUR_CLIENT_ID',  // ← 替換這裡
-    authority: 'https://login.microsoftonline.com/YOUR_TENANT_ID',  // ← 替換這裡
-    redirectUri: window.location.origin + '/dashboard',
-  },
-  // ...
-};

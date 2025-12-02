@@ -20,6 +20,7 @@
         :expandedRowKeys="expandedRowKeys"
         @expand="handleExpand"
         :expandRowByClick="true"
+        :loading="tableLoading"
       >
         <template #bodyCell="{ column, record }">
           <!-- 編輯按鈕 -->
@@ -82,6 +83,7 @@
       @ok="handleFeatureSubmit"
       @cancel="handleFeatureCancel"
       width="700px"
+      :confirmLoading="modalLoading"
     >
       <a-form layout="vertical" :model="featureForm">
         <a-form-item label="功能名稱" required>
@@ -152,29 +154,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { 
   EditOutlined,
   SearchOutlined
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
-
-// -----------20251201-----------
-import { api } from '../utils/api';
-
-const updateFeatureStatus = async (featureId, enabled) => {
-  try {
-    await api.patch(`/features/${featureId}`, {
-      enabled: enabled
-    });
-    message.success('功能狀態更新成功！');
-  } catch (error) {
-    console.error('更新功能狀態失敗:', error);
-  }
-};
-// -----------20251201-----------
-
-
+import { api } from '../utils/api'; // 引入 API 工具
 
 // Modal 控制
 const featureModalVisible = ref(false);
@@ -183,6 +169,10 @@ const isEditMode = ref(false);
 
 // 當前編輯的功能
 const currentFeature = ref(null);
+
+// Loading 狀態
+const tableLoading = ref(false);
+const modalLoading = ref(false);
 
 // 功能表單
 const featureForm = ref({
@@ -236,40 +226,11 @@ const userColumns = [
   { title: '狀態', key: 'status', width: 120, align: 'center' }
 ];
 
-// 功能資料
-const featureData = ref([
-  {
-    key: '1',
-    featureName: 'VESA 轉換',
-    description: 'VESA',
-    enabled: true,
-    users: [
-      { key: 'u1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com', enabled: true },
-      { key: 'u2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com', enabled: true }
-    ]
-  },
-  {
-    key: '2',
-    featureName: 'BMP tools',
-    description: 'BMP 工具',
-    enabled: false,
-    users: [
-      { key: 'u3', customerId: 'NVT03134', username: 'Hailey', email: 'Hailey@example.com', enabled: false }
-    ]
-  }
-]);
+// 功能資料（從 API 取得）
+const featureData = ref([]);
 
-// 所有可用使用者（用於新增）
-const allUsers = ref([
-  { key: 'u1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com' },
-  { key: 'u2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com' },
-  { key: 'u3', customerId: 'NVT03134', username: 'Hailey', email: 'Hailey@example.com' },
-  { key: 'u4', customerId: 'NVT00220', username: 'Eric', email: 'Eric@example.com' },
-  { key: 'u5', customerId: 'NVT03334', username: 'Hazel', email: 'Hazel@example.com' },
-  { key: 'u6', customerId: 'NVT03131', username: 'Er', email: 'Er@example.com' },
-  { key: 'u7', customerId: 'NVT023221', username: 'NY', email: 'NY@example.com' },
-  { key: 'u8', customerId: 'NVT02131', username: 'Angela', email: 'Angela@example.com' }
-]);
+// 所有可用使用者（從 API 取得）
+const allUsers = ref([]);
 
 // 篩選後的可用使用者（排除已加入該功能的使用者）
 const filteredAvailableUsers = computed(() => {
@@ -292,6 +253,187 @@ const filteredAvailableUsers = computed(() => {
   
   return availableUsers;
 });
+
+// ============================================
+// API 呼叫函數
+// ============================================
+
+// 取得功能列表
+const fetchFeatures = async () => {
+  tableLoading.value = true;
+  try {
+    const response = await api.get('/features');
+    
+    // 處理 API 回傳的資料格式
+    // 假設 API 回傳格式：
+    // {
+    //   success: true,
+    //   data: [
+    //     {
+    //       id: 1,
+    //       featureName: 'VESA 轉換',
+    //       description: 'VESA',
+    //       enabled: true,
+    //       users: [...]
+    //     }
+    //   ]
+    // }
+    
+    featureData.value = response.data.data.map(feature => ({
+      key: feature.id.toString(),
+      featureName: feature.featureName,
+      description: feature.description,
+      enabled: feature.enabled,
+      users: feature.users || []
+    }));
+    
+    message.success('功能列表載入成功');
+  } catch (error) {
+    console.error('取得功能列表失敗:', error);
+    message.error('載入功能列表失敗，請重試');
+    
+    // 使用假資料作為備用（開發時使用）
+    featureData.value = [
+      {
+        key: '1',
+        featureName: 'VESA 轉換',
+        description: 'VESA',
+        enabled: true,
+        users: [
+          { key: 'u1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com', enabled: true },
+          { key: 'u2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com', enabled: true }
+        ]
+      }
+    ];
+  } finally {
+    tableLoading.value = false;
+  }
+};
+
+// 取得所有可用使用者
+const fetchAllUsers = async () => {
+  try {
+    const response = await api.get('/users/all');
+    
+    // 假設 API 回傳格式：
+    // {
+    //   success: true,
+    //   data: [
+    //     {
+    //       id: 1,
+    //       customerId: 'NVT00120',
+    //       username: 'Amy',
+    //       email: 'Amy@example.com'
+    //     }
+    //   ]
+    // }
+    
+    allUsers.value = response.data.data.map(user => ({
+      key: user.id.toString(),
+      customerId: user.customerId,
+      username: user.username,
+      email: user.email
+    }));
+  } catch (error) {
+    console.error('取得使用者列表失敗:', error);
+    
+    // 使用假資料作為備用
+    allUsers.value = [
+      { key: 'u1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com' },
+      { key: 'u2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com' },
+      { key: 'u3', customerId: 'NVT03134', username: 'Hailey', email: 'Hailey@example.com' },
+      { key: 'u4', customerId: 'NVT00220', username: 'Eric', email: 'Eric@example.com' },
+      { key: 'u5', customerId: 'NVT03334', username: 'Hazel', email: 'Hazel@example.com' },
+      { key: 'u6', customerId: 'NVT03131', username: 'Er', email: 'Er@example.com' },
+      { key: 'u7', customerId: 'NVT023221', username: 'NY', email: 'NY@example.com' },
+      { key: 'u8', customerId: 'NVT02131', username: 'Angela', email: 'Angela@example.com' }
+    ];
+  }
+};
+
+// 新增功能到後端
+const createFeature = async (featureData) => {
+  try {
+    const response = await api.post('/features', {
+      featureName: featureData.featureName,
+      description: featureData.description,
+      enabled: featureData.enabled
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('新增功能失敗:', error);
+    throw error;
+  }
+};
+
+// 更新功能到後端
+const updateFeature = async (featureId, featureData) => {
+  try {
+    const response = await api.put(`/features/${featureId}`, {
+      featureName: featureData.featureName,
+      description: featureData.description,
+      enabled: featureData.enabled
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('更新功能失敗:', error);
+    throw error;
+  }
+};
+
+// 更新功能狀態
+const updateFeatureStatus = async (featureId, enabled) => {
+  try {
+    await api.patch(`/features/${featureId}/status`, {
+      enabled: enabled
+    });
+  } catch (error) {
+    console.error('更新功能狀態失敗:', error);
+    throw error;
+  }
+};
+
+// 新增使用者到功能
+const addUsersToFeature = async (featureId, userIds) => {
+  try {
+    await api.post(`/features/${featureId}/users`, {
+      userIds: userIds
+    });
+  } catch (error) {
+    console.error('新增使用者失敗:', error);
+    throw error;
+  }
+};
+
+// 更新使用者在功能中的狀態
+const updateUserFeatureStatus = async (featureId, userId, enabled) => {
+  try {
+    await api.patch(`/features/${featureId}/users/${userId}`, {
+      enabled: enabled
+    });
+  } catch (error) {
+    console.error('更新使用者狀態失敗:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 組件生命週期
+// ============================================
+
+onMounted(async () => {
+  // 頁面載入時取得資料
+  await Promise.all([
+    fetchFeatures(),
+    fetchAllUsers()
+  ]);
+});
+
+// ============================================
+// 事件處理函數
+// ============================================
 
 // 顯示新增功能 Modal
 const showAddFeatureModal = () => {
@@ -317,28 +459,38 @@ const handleEdit = (record) => {
 };
 
 // 提交功能表單
-const handleFeatureSubmit = () => {
+const handleFeatureSubmit = async () => {
   if (!featureForm.value.featureName || !featureForm.value.description) {
     message.error('請填寫所有必填欄位');
     return;
   }
 
-  if (isEditMode.value) {
-    // 更新功能
-    Object.assign(currentFeature.value, featureForm.value);
-    message.success('功能更新成功！');
-  } else {
-    // 新增功能
-    const newFeature = {
-      key: Date.now().toString(),
-      ...featureForm.value,
-      users: []
-    };
-    featureData.value.push(newFeature);
-    message.success('功能新增成功！');
-  }
+  modalLoading.value = true;
 
-  featureModalVisible.value = false;
+  try {
+    if (isEditMode.value) {
+      // 更新功能
+      await updateFeature(currentFeature.value.key, featureForm.value);
+      Object.assign(currentFeature.value, featureForm.value);
+      message.success('功能更新成功！');
+    } else {
+      // 新增功能
+      const result = await createFeature(featureForm.value);
+      const newFeature = {
+        key: result.data.id.toString(),
+        ...featureForm.value,
+        users: []
+      };
+      featureData.value.push(newFeature);
+      message.success('功能新增成功！');
+    }
+
+    featureModalVisible.value = false;
+  } catch (error) {
+    message.error(isEditMode.value ? '功能更新失敗' : '功能新增失敗');
+  } finally {
+    modalLoading.value = false;
+  }
 };
 
 // 取消功能表單
@@ -347,9 +499,16 @@ const handleFeatureCancel = () => {
 };
 
 // 啟用/停用狀態變更
-const handleStatusChange = (record) => {
-  const status = record.enabled ? '啟用' : '停用';
-  message.success(`功能「${record.featureName}」已${status}`);
+const handleStatusChange = async (record) => {
+  try {
+    await updateFeatureStatus(record.key, record.enabled);
+    const status = record.enabled ? '啟用' : '停用';
+    message.success(`功能「${record.featureName}」已${status}`);
+  } catch (error) {
+    // 還原狀態
+    record.enabled = !record.enabled;
+    message.error('更新狀態失敗');
+  }
 };
 
 // 顯示新增使用者 Modal
@@ -371,7 +530,7 @@ const onUserSelectChange = (selectedKeys) => {
 };
 
 // 批次新增使用者
-const handleBatchAdd = () => {
+const handleBatchAdd = async () => {
   if (selectedUserKeys.value.length === 0) {
     message.warning('請至少選擇一位使用者');
     return;
@@ -390,16 +549,28 @@ const handleBatchAdd = () => {
     return;
   }
 
-  // 新增使用者時，預設為啟用狀態
-  const usersToAdd = newUsers.map(user => ({
-    ...user,
-    enabled: true
-  }));
+  modalLoading.value = true;
 
-  currentFeature.value.users.push(...usersToAdd);
-  message.success(`成功新增 ${newUsers.length} 位使用者`);
-  
-  selectedUserKeys.value = [];
+  try {
+    // 呼叫 API 新增使用者
+    const userIds = newUsers.map(u => u.key);
+    await addUsersToFeature(currentFeature.value.key, userIds);
+
+    // 新增使用者時，預設為啟用狀態
+    const usersToAdd = newUsers.map(user => ({
+      ...user,
+      enabled: true
+    }));
+
+    currentFeature.value.users.push(...usersToAdd);
+    message.success(`成功新增 ${newUsers.length} 位使用者`);
+    
+    selectedUserKeys.value = [];
+  } catch (error) {
+    message.error('新增使用者失敗');
+  } finally {
+    modalLoading.value = false;
+  }
 };
 
 // 提交使用者新增
@@ -424,9 +595,16 @@ const handleExpand = (expanded, record) => {
 };
 
 // 使用者狀態變更
-const handleUserStatusChange = (feature, user) => {
-  const status = user.enabled ? '啟用' : '停用';
-  message.success(`使用者「${user.username}」在功能「${feature.featureName}」已${status}`);
+const handleUserStatusChange = async (feature, user) => {
+  try {
+    await updateUserFeatureStatus(feature.key, user.key, user.enabled);
+    const status = user.enabled ? '啟用' : '停用';
+    message.success(`使用者「${user.username}」在功能「${feature.featureName}」已${status}`);
+  } catch (error) {
+    // 還原狀態
+    user.enabled = !user.enabled;
+    message.error('更新使用者狀態失敗');
+  }
 };
 </script>
 
@@ -555,5 +733,3 @@ const handleUserStatusChange = (feature, user) => {
   background: #94a3b8;
 }
 </style>
-
-

@@ -1,41 +1,43 @@
+// router/index.js
 import { createRouter, createWebHistory } from 'vue-router';
-import { isAuthenticated } from '../utils/auth';
-import Login from '../views/Login.vue';
-import Dashboard from '../views/Dashboard.vue';
-
-const routes = [
-  {
-    path: '/',
-    redirect: '/login'
-  },
-  {
-    path: '/login',
-    name: 'Login',
-    component: Login,
-    meta: { requiresAuth: false }
-  },
-  {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: Dashboard,
-    meta: { requiresAuth: true }
-  }
-];
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: [
+    {
+      path: '/',
+      redirect: '/login'
+    },
+    {
+      path: '/login',
+      name: 'Login',
+      component: () => import('@/views/Login.vue'),
+      meta: { requiresAuth: false }
+    },
+    {
+      path: '/dashboard',
+      name: 'Dashboard',
+      component: () => import('@/views/Dashboard.vue'),
+      meta: { requiresAuth: true }
+    }
+  ]
 });
 
-// 路由守衛：檢查認證狀態
-router.beforeEach(async (to, from, next) => {
-  const authenticated = await isAuthenticated();
+// 路由守衛
+router.beforeEach((to, from, next) => {
+  const isAuthenticated = sessionStorage.getItem('is_authenticated') === 'true';
   
-  if (to.meta.requiresAuth && !authenticated) {
-    // 需要認證但未登入，跳轉到登入頁
+  console.log('路由守衛檢查:', {
+    to: to.path,
+    from: from.path,
+    isAuthenticated
+  });
+
+  if (to.meta.requiresAuth && !isAuthenticated) {
+    // 需要認證但未登入,跳轉到登入頁
     next('/login');
-  } else if (to.path === '/login' && authenticated) {
-    // 已登入但訪問登入頁，跳轉到 Dashboard
+  } else if (to.path === '/login' && isAuthenticated) {
+    // 已登入卻訪問登入頁,跳轉到 dashboard
     next('/dashboard');
   } else {
     next();
@@ -43,3 +45,23 @@ router.beforeEach(async (to, from, next) => {
 });
 
 export default router;
+```
+
+---
+
+## 🔧 Azure Portal 設定檢查
+
+確認 Azure AD 的 Redirect URI 設定:
+
+1. 進入 Azure Portal → App registrations
+2. 選擇您的應用程式
+3. 點選 **Authentication**
+4. 在 **Single-page application** 區域,確認有以下 URI:
+```
+   http://localhost:5173
+   http://localhost:5173/dashboard
+```
+5. 如果是生產環境,也要加上:
+```
+   https://yourdomain.com
+   https://yourdomain.com/dashboard

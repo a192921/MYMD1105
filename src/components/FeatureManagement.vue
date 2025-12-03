@@ -263,7 +263,7 @@ const fetchFeatures = async () => {
   tableLoading.value = true;
   try {
     const response = await api.get('/features');
-    
+
     // 處理 API 回傳的資料格式
     // 假設 API 回傳格式：
     // {

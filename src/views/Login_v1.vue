@@ -43,23 +43,86 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { ToolOutlined, WindowsOutlined } from '@ant-design/icons-vue';
-import { useAuth } from '../utils/auth';
-import { ref } from 'vue';
+import { message } from 'ant-design-vue';
+import { 
+  initializeMsal, 
+  loginWithRedirect,
+  getUserDisplayName 
+} from '@/utils/auth';
 
-const { login } = useAuth();
-const azureLoading = ref(false);
+// ============================================
+// Router
+// ============================================
+const router = useRouter();
 
-const handleAzureLogin = async () => {
-  azureLoading.value = true;
+// ============================================
+// 狀態管理
+// ============================================
+const isLoggingIn = ref(false);
+const errorMessage = ref('');
 
+// ============================================
+// 初始化 MSAL（處理重定向回應）
+// ============================================
+const initAuth = async () => {
   try {
-    await login(); // 會自動呼叫 loginRedirect()
-  } catch (err) {
-    azureLoading.value = false;
-    console.error(err);
+    const result = await initializeMsal();
+
+    if (result.success) {
+      if (result.alreadyLoggedIn) {
+        // 使用者已經登入
+        const displayName = getUserDisplayName();
+        message.success(`歡迎回來，${displayName}`);
+        
+        // 跳轉到儀表板
+        router.push('/dashboard');
+      } else {
+        // 剛完成登入（從重定向回來）
+        const displayName = result.account.name || result.account.username;
+        message.success(`登入成功！歡迎 ${displayName}`);
+        
+        // 跳轉到儀表板
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 500);
+      }
+    }
+  } catch (error) {
+    console.error('初始化認證失敗:', error);
+    errorMessage.value = error.message || 'Azure AD 服務初始化失敗';
   }
 };
+
+// ============================================
+// 處理登入按鈕點擊
+// ============================================
+const handleLogin = async () => {
+  isLoggingIn.value = true;
+  errorMessage.value = '';
+
+  try {
+    // 使用重定向方式登入
+    await loginWithRedirect();
+    
+    // 注意：loginWithRedirect 會導致頁面重定向
+    // 所以這裡的程式碼不會執行
+  } catch (error) {
+    console.error('登入失敗:', error);
+    errorMessage.value = error.message || '登入失敗，請稍後再試';
+    isLoggingIn.value = false;
+  }
+};
+
+// ============================================
+// 組件生命週期
+// ============================================
+onMounted(async () => {
+  // 初始化 MSAL 並處理重定向回應
+  await initAuth();
+});
 </script>
 
 <style scoped>
@@ -149,3 +212,4 @@ const handleAzureLogin = async () => {
   margin-top: 16px;
 }
 </style>
+

@@ -47,21 +47,18 @@
       <!-- 右上角使用者資訊和登出按鈕 -->
       <div class="floating-actions">
         <!-- 使用者資訊下拉選單 -->
-         
-        <a-dropdown placement="bottomRight">
-          <a-button class="user-info-button" size="large">
-            <template #icon>
-              <UserOutlined />
-            </template>
-            <span class="username">Queena</span>
+        <a-dropdown placement="bottomRight" :trigger="['click']">
+          <a-button class="user-info-button" size="large" @click.stop>
+            <UserOutlined />
+            <span class="username">{{ username }}</span>
             <DownOutlined style="margin-left: 4px; font-size: 12px" />
           </a-button>
           <template #overlay>
-            <a-menu class="user-menu">
+            <a-menu class="user-menu" @click="handleMenuItemClick">
               <a-menu-item key="profile" disabled>
                 <div class="user-menu-header">
-                  <div class="user-menu-name">Queena</div>
-                  <div class="user-menu-email">Queena</div>
+                  <div class="user-menu-name">{{ username }}</div>
+                  <div class="user-menu-email">{{ userEmail }}</div>
                 </div>
               </a-menu-item>
               <a-menu-divider />
@@ -74,7 +71,7 @@
                 系統設定
               </a-menu-item>
               <a-menu-divider />
-              <a-menu-item key="logout" @click="handleLogout">
+              <a-menu-item key="logout">
                 <LogoutOutlined style="margin-right: 8px; color: #ef4444" />
                 <span style="color: #ef4444">登出</span>
               </a-menu-item>
@@ -113,7 +110,7 @@ import {
   DownOutlined,
   SettingOutlined
 } from '@ant-design/icons-vue';
-// import { getUserDisplayName, getUserEmail, logout } from '../utils/auth';
+// import { getUserDisplayName, getUserEmail, logout } from '@/utils/auth';
 import Overview from '../components/Overview.vue';
 import UserManagement from '../components/UserManagement.vue';
 import FeatureManagement from '../components/FeatureManagement.vue';
@@ -123,9 +120,9 @@ import Audit from '../components/Audit.vue';
 const router = useRouter();
 const selectedKeys = ref(['overview']);
 
-// 使用者資訊
-const username = ref('');
-const userEmail = ref('');
+// 使用者資訊（假資料）
+const username = ref('王小明');
+const userEmail = ref('wang.xiaoming@company.com');
 
 const components = {
   overview: markRaw(Overview),
@@ -141,42 +138,61 @@ const handleMenuClick = ({ key }) => {
   selectedKeys.value = [key];
 };
 
-// 初始化使用者資訊
-// const initUserInfo = () => {
-//   // 優先從 auth.js 取得 MSAL 使用者資訊
-//   const msalUsername = getUserDisplayName();
-//   const msalEmail = getUserEmail();
+// 處理使用者選單點擊
+const handleMenuItemClick = ({ key }) => {
+  switch (key) {
+    case 'profile-settings':
+      message.info('個人資料功能開發中');
+      break;
+    case 'settings':
+      message.info('系統設定功能開發中');
+      break;
+    case 'logout':
+      handleLogout();
+      break;
+  }
+};
+
+// 初始化使用者資訊（註解掉，改用假資料）
+const initUserInfo = () => {
+  // 暫時使用假資料，之後可以取消註解改用真實資料
   
-//   if (msalUsername) {
-//     username.value = msalUsername;
-//     userEmail.value = msalEmail;
-//   } else {
-//     // 如果 MSAL 沒有資料，從 localStorage 取得
-//     username.value = localStorage.getItem('username') || '使用者';
-//     userEmail.value = localStorage.getItem('userEmail') || '';
-//   }
-// };
+  // // 優先從 auth.js 取得 MSAL 使用者資訊
+  // const msalUsername = getUserDisplayName();
+  // const msalEmail = getUserEmail();
+  
+  // if (msalUsername) {
+  //   username.value = msalUsername;
+  //   userEmail.value = msalEmail;
+  // } else {
+  //   // 如果 MSAL 沒有資料，從 localStorage 取得
+  //   username.value = localStorage.getItem('username') || '使用者';
+  //   userEmail.value = localStorage.getItem('userEmail') || '';
+  // }
+};
 
 // 登出處理
 const handleLogout = async () => {
   try {
-    // 使用 MSAL 登出
-    await logout();
-    message.success('登出成功！');
-  } catch (error) {
-    console.error('登出失敗:', error);
-    // 即使 MSAL 登出失敗，也清除本地資料
+    // 暫時註解 MSAL 登出，使用簡單的登出邏輯
+    // await logout();
+    
+    // 清除假資料（可選）
     localStorage.removeItem('username');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('token');
+    
     message.success('登出成功！');
     router.push('/login');
+  } catch (error) {
+    console.error('登出失敗:', error);
+    message.error('登出失敗，請重試');
   }
 };
 
 // 組件掛載時初始化使用者資訊
 onMounted(() => {
-  initUserInfo();
+  // initUserInfo(); // 暫時不需要，直接使用假資料
 });
 </script>
 

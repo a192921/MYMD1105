@@ -44,20 +44,31 @@
             type="primary" 
             @click="handleSearch"
             size="middle"
+            :loading="loading"
           >
             查詢
+          </a-button>
+
+          <!-- 重新整理按鈕 -->
+          <a-button 
+            @click="handleRefresh"
+            size="middle"
+            :loading="loading"
+          >
+            <ReloadOutlined /> 重新整理
           </a-button>
         </div>
       </template>
 
       <a-table
         :columns="columns"
-        :data-source="filteredData"
-        :pagination="false"
+        :data-source="jobData"
+        :pagination="paginationConfig"
         :loading="loading"
         :scroll="{ y: 'calc(100vh - 320px)' }"
         :expandedRowKeys="expandedRowKeys"
         @expand="handleExpand"
+        @change="handleTableChange"
         :expandRowByClick="true"
       >
         <template #bodyCell="{ column, record }">
@@ -69,13 +80,28 @@
           <!-- Job 操作按鈕 -->
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click.stop="handleJobRetry(record)">
+              <a-button 
+                type="link" 
+                size="small" 
+                @click.stop="handleJobRetry(record)"
+                :disabled="record.status === 'Done'"
+              >
                 <ReloadOutlined /> 重試
               </a-button>
-              <a-button type="link" size="small" @click.stop="handleJobCancel(record)">
+              <a-button 
+                type="link" 
+                size="small" 
+                @click.stop="handleJobCancel(record)"
+                :disabled="record.status !== 'Running' && record.status !== 'Pending'"
+              >
                 <StopOutlined /> 取消
               </a-button>
-              <a-button type="link" danger size="small" @click.stop="handleJobDelete(record)">
+              <a-button 
+                type="link" 
+                danger 
+                size="small" 
+                @click.stop="handleJobDelete(record)"
+              >
                 <DeleteOutlined /> 刪除
               </a-button>
             </a-space>
@@ -89,15 +115,16 @@
             <div class="job-files-section">
               <h4 class="section-title">
                 <FileTextOutlined style="margin-right: 8px" />
-                Job Files ({{ record.jobFiles.length }})
+                Job Files ({{ record.jobFiles?.length || 0 }})
               </h4>
               
               <a-table
                 :columns="fileColumns"
-                :data-source="record.jobFiles"
+                :data-source="record.jobFiles || []"
                 :pagination="false"
                 size="small"
                 :scroll="{ y: 300 }"
+                :loading="loadingFiles[record.jobId]"
                 class="files-table"
               >
                 <template #bodyCell="{ column, record: file }">
@@ -115,7 +142,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { 
   CalendarOutlined, 
   FileTextOutlined,
@@ -125,12 +152,28 @@ import {
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import dayjs from 'dayjs';
+import { api } from '../utils/api'; // 引入 API 工具
 
+// ============================================
+// 狀態管理
+// ============================================
 const loading = ref(false);
+const loadingFiles = ref({}); // 用於追蹤個別 Job 的檔案載入狀態
 const startDate = ref(null);
 const endDate = ref(null);
 const statusFilter = ref([]);
 const expandedRowKeys = ref([]);
+const jobData = ref([]);
+
+// 分頁設定
+const paginationConfig = ref({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  showSizeChanger: true,
+  showTotal: (total) => `共 ${total} 筆資料`,
+  pageSizeOptions: ['10', '20', '50', '100'],
+});
 
 const statusOptions = [
   { label: 'Pending', value: 'Pending' },
@@ -139,7 +182,9 @@ const statusOptions = [
   { label: 'Failed', value: 'Failed' }
 ];
 
-// 主表格欄位
+// ============================================
+// 表格欄位設定
+// ============================================
 const columns = [
   { 
     title: 'Job_id', 
@@ -173,7 +218,6 @@ const columns = [
   }
 ];
 
-// JobFile 表格欄位（移除操作欄）
 const fileColumns = [
   { 
     title: 'File ID', 
@@ -207,121 +251,281 @@ const fileColumns = [
   }
 ];
 
-// Job 資料（含 JobFile）
-const jobData = ref([
-  { 
-    key: '1', 
-    jobId: '00000110', 
-    customerId: 'NVT00120', 
-    status: 'Running', 
-    timestamp: '20220102 09:20:30',
-    featureId: '',
-    createdAt: '20220102 09:20:30',
-    completedAt: '20220103 09:20:20',
-    jobFiles: [
-      { key: 'f1', fileId: 'F001', fileName: 'input_data.csv', fileType: 'CSV', fileSize: 2048576, uploadTime: '20220102 09:15:20' },
-      { key: 'f2', fileId: 'F002', fileName: 'config.json', fileType: 'JSON', fileSize: 4096, uploadTime: '20220102 09:16:30' },
-      { key: 'f3', fileId: 'F003', fileName: 'result_output.xlsx', fileType: 'XLSX', fileSize: 5242880, uploadTime: '20220102 09:20:30' }
-    ]
-  },
-  { 
-    key: '2', 
-    jobId: '00000104', 
-    customerId: 'NVT00134', 
-    status: 'Done', 
-    timestamp: '20220102 09:20:30',
-    featureId: 'FT001',
-    createdAt: '20220102 09:20:30',
-    completedAt: '20220102 10:30:45',
-    jobFiles: [
-      { key: 'f4', fileId: 'F004', fileName: 'dataset.csv', fileType: 'CSV', fileSize: 10485760, uploadTime: '20220102 09:18:00' },
-      { key: 'f5', fileId: 'F005', fileName: 'report.pdf', fileType: 'PDF', fileSize: 1048576, uploadTime: '20220102 10:30:45' }
-    ]
-  },
-  { 
-    key: '3', 
-    jobId: '00003134', 
-    customerId: 'NVT03134', 
-    status: 'Running', 
-    timestamp: '20211102 09:20:30',
-    featureId: 'FT002',
-    createdAt: '20211102 09:20:30',
-    completedAt: null,
-    jobFiles: [
-      { key: 'f6', fileId: 'F006', fileName: 'image_001.png', fileType: 'PNG', fileSize: 524288, uploadTime: '20211102 09:19:00' },
-      { key: 'f7', fileId: 'F007', fileName: 'image_002.png', fileType: 'PNG', fileSize: 614400, uploadTime: '20211102 09:19:30' },
-      { key: 'f8', fileId: 'F008', fileName: 'image_003.png', fileType: 'PNG', fileSize: 458752, uploadTime: '20211102 09:20:00' },
-      { key: 'f9', fileId: 'F009', fileName: 'metadata.xml', fileType: 'XML', fileSize: 8192, uploadTime: '20211102 09:20:30' }
-    ]
-  },
-  { 
-    key: '4', 
-    jobId: '00000220', 
-    customerId: 'NVT00220', 
-    status: 'Failed', 
-    timestamp: '20230102 09:20:30',
-    featureId: '',
-    createdAt: '20230102 09:20:30',
-    completedAt: '20230102 09:25:15',
-    jobFiles: [
-      { key: 'f10', fileId: 'F010', fileName: 'error_log.txt', fileType: 'TXT', fileSize: 2048, uploadTime: '20230102 09:25:15' }
-    ]
-  },
-  { 
-    key: '5', 
-    jobId: '00000334', 
-    customerId: 'NVT03334', 
-    status: 'Failed', 
-    timestamp: '20240102 09:20:30',
-    featureId: 'FT003',
-    createdAt: '20240102 09:20:30',
-    completedAt: null,
-    jobFiles: []
-  },
-  { 
-    key: '6', 
-    jobId: '00003131', 
-    customerId: 'NVT03131', 
-    status: 'Failed', 
-    timestamp: '20250102 09:20:30',
-    featureId: '',
-    createdAt: '20250102 09:20:30',
-    completedAt: null,
-    jobFiles: [
-      { key: 'f11', fileId: 'F011', fileName: 'backup.zip', fileType: 'ZIP', fileSize: 20971520, uploadTime: '20250102 09:20:00' }
-    ]
+// ============================================
+// API 呼叫函數
+// ============================================
+
+// 取得 Job 列表
+const fetchJobs = async () => {
+  loading.value = true;
+  try {
+    // 建立查詢參數
+    const params = {
+      page: paginationConfig.value.current,
+      pageSize: paginationConfig.value.pageSize,
+    };
+
+    // 加入日期篩選
+    if (startDate.value) {
+      params.startDate = dayjs(startDate.value).format('YYYY-MM-DD');
+    }
+    if (endDate.value) {
+      params.endDate = dayjs(endDate.value).format('YYYY-MM-DD');
+    }
+
+    // 加入狀態篩選
+    if (statusFilter.value && statusFilter.value.length > 0) {
+      params.status = statusFilter.value.join(',');
+    }
+
+    const response = await api.get('/jobs', { params });
+
+    // 假設 API 回傳格式：
+    // {
+    //   success: true,
+    //   data: {
+    //     jobs: [...],
+    //     total: 100,
+    //     page: 1,
+    //     pageSize: 10
+    //   }
+    // }
+
+    jobData.value = response.data.data.jobs.map(job => ({
+      key: job.id.toString(),
+      jobId: job.jobId,
+      customerId: job.customerId,
+      status: job.status,
+      timestamp: job.timestamp,
+      featureId: job.featureId,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
+      jobFiles: [], // 初始為空，展開時才載入
+    }));
+
+    // 更新分頁資訊
+    paginationConfig.value.total = response.data.data.total;
+
+    message.success('Job 列表載入成功');
+  } catch (error) {
+    console.error('取得 Job 列表失敗:', error);
+    message.error('載入 Job 列表失敗');
+
+    // 使用假資料作為備用
+    jobData.value = [
+      { 
+        key: '1', 
+        jobId: '00000110', 
+        customerId: 'NVT00120', 
+        status: 'Running', 
+        timestamp: '20220102 09:20:30',
+        featureId: '',
+        createdAt: '20220102 09:20:30',
+        completedAt: null,
+        jobFiles: []
+      },
+      { 
+        key: '2', 
+        jobId: '00000104', 
+        customerId: 'NVT00134', 
+        status: 'Done', 
+        timestamp: '20220102 09:20:30',
+        featureId: 'FT001',
+        createdAt: '20220102 09:20:30',
+        completedAt: '20220102 10:30:45',
+        jobFiles: []
+      },
+    ];
+    paginationConfig.value.total = 2;
+  } finally {
+    loading.value = false;
   }
-]);
+};
 
-const filteredData = computed(() => {
-  let result = jobData.value;
+// 取得 Job 的檔案列表（當展開行時呼叫）
+const fetchJobFiles = async (jobId) => {
+  loadingFiles.value[jobId] = true;
+  try {
+    const response = await api.get(`/jobs/${jobId}/files`);
 
-  // 日期篩選
-  if (startDate.value) {
-    const start = dayjs(startDate.value).format('YYYYMMDD');
-    result = result.filter(item => {
-      const itemDate = item.timestamp.split(' ')[0];
-      return itemDate >= start;
-    });
+    // 假設 API 回傳格式：
+    // {
+    //   success: true,
+    //   data: [
+    //     { id: 1, fileId: 'F001', fileName: 'input.csv', ... }
+    //   ]
+    // }
+
+    const files = response.data.data.map(file => ({
+      key: file.id.toString(),
+      fileId: file.fileId,
+      fileName: file.fileName,
+      fileType: file.fileType,
+      fileSize: file.fileSize,
+      uploadTime: file.uploadTime,
+    }));
+
+    // 更新對應 Job 的檔案列表
+    const job = jobData.value.find(j => j.jobId === jobId);
+    if (job) {
+      job.jobFiles = files;
+    }
+
+    return files;
+  } catch (error) {
+    console.error(`取得 Job ${jobId} 的檔案列表失敗:`, error);
+    message.error('載入檔案列表失敗');
+
+    // 使用假資料
+    const mockFiles = [
+      { 
+        key: 'f1', 
+        fileId: 'F001', 
+        fileName: 'input_data.csv', 
+        fileType: 'CSV', 
+        fileSize: 2048576, 
+        uploadTime: '20220102 09:15:20' 
+      },
+      { 
+        key: 'f2', 
+        fileId: 'F002', 
+        fileName: 'config.json', 
+        fileType: 'JSON', 
+        fileSize: 4096, 
+        uploadTime: '20220102 09:16:30' 
+      }
+    ];
+
+    const job = jobData.value.find(j => j.jobId === jobId);
+    if (job) {
+      job.jobFiles = mockFiles;
+    }
+
+    return mockFiles;
+  } finally {
+    loadingFiles.value[jobId] = false;
   }
+};
 
-  if (endDate.value) {
-    const end = dayjs(endDate.value).format('YYYYMMDD');
-    result = result.filter(item => {
-      const itemDate = item.timestamp.split(' ')[0];
-      return itemDate <= end;
-    });
+// 重試 Job
+const retryJob = async (jobId) => {
+  try {
+    await api.post(`/jobs/${jobId}/retry`);
+    message.success(`Job ${jobId} 重試成功`);
+    
+    // 重新載入列表
+    await fetchJobs();
+  } catch (error) {
+    console.error('重試 Job 失敗:', error);
+    message.error('重試 Job 失敗');
   }
+};
 
-  // Status 篩選
-  if (statusFilter.value && statusFilter.value.length > 0) {
-    result = result.filter(item =>
-      statusFilter.value.includes(item.status)
-    );
+// 取消 Job
+const cancelJob = async (jobId) => {
+  try {
+    await api.post(`/jobs/${jobId}/cancel`);
+    message.success(`Job ${jobId} 已取消`);
+    
+    // 重新載入列表
+    await fetchJobs();
+  } catch (error) {
+    console.error('取消 Job 失敗:', error);
+    message.error('取消 Job 失敗');
   }
+};
 
-  return result;
-});
+// 刪除 Job
+const deleteJob = async (jobId) => {
+  try {
+    await api.delete(`/jobs/${jobId}`);
+    message.success(`Job ${jobId} 已刪除`);
+    
+    // 重新載入列表
+    await fetchJobs();
+  } catch (error) {
+    console.error('刪除 Job 失敗:', error);
+    message.error('刪除 Job 失敗');
+  }
+};
+
+// ============================================
+// 事件處理函數
+// ============================================
+
+// 查詢按鈕
+const handleSearch = async () => {
+  paginationConfig.value.current = 1; // 重置到第一頁
+  await fetchJobs();
+};
+
+// 重新整理按鈕
+const handleRefresh = async () => {
+  await fetchJobs();
+};
+
+// 表格分頁變更
+const handleTableChange = (pagination) => {
+  paginationConfig.value.current = pagination.current;
+  paginationConfig.value.pageSize = pagination.pageSize;
+  fetchJobs();
+};
+
+// 展開行
+const handleExpand = async (expanded, record) => {
+  if (expanded) {
+    expandedRowKeys.value = [record.key];
+    
+    // 如果檔案列表為空，則載入
+    if (!record.jobFiles || record.jobFiles.length === 0) {
+      await fetchJobFiles(record.jobId);
+    }
+  } else {
+    expandedRowKeys.value = [];
+  }
+};
+
+// Job 操作
+const handleJobRetry = (job) => {
+  Modal.confirm({
+    title: '確認重試',
+    content: `確定要重試 Job「${job.jobId}」嗎？`,
+    okText: '確定',
+    cancelText: '取消',
+    onOk: async () => {
+      await retryJob(job.jobId);
+    }
+  });
+};
+
+const handleJobCancel = (job) => {
+  Modal.confirm({
+    title: '確認取消',
+    content: `確定要取消 Job「${job.jobId}」嗎？`,
+    okText: '確定',
+    cancelText: '取消',
+    onOk: async () => {
+      await cancelJob(job.jobId);
+    }
+  });
+};
+
+const handleJobDelete = (job) => {
+  Modal.confirm({
+    title: '確認刪除',
+    content: `確定要刪除 Job「${job.jobId}」嗎？此操作無法復原。`,
+    okText: '確定刪除',
+    cancelText: '取消',
+    okType: 'danger',
+    onOk: async () => {
+      await deleteJob(job.jobId);
+    }
+  });
+};
+
+// ============================================
+// 工具函數
+// ============================================
 
 const getStatusColor = (status) => {
   const colors = {
@@ -341,56 +545,14 @@ const formatFileSize = (bytes) => {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 };
 
-const handleExpand = (expanded, record) => {
-  if (expanded) {
-    expandedRowKeys.value = [record.key];
-  } else {
-    expandedRowKeys.value = [];
-  }
-};
+// ============================================
+// 生命週期
+// ============================================
 
-const handleSearch = () => {
-  loading.value = true;
-  setTimeout(() => {
-    loading.value = false;
-  }, 500);
-};
-
-// Job 操作函數
-const handleJobRetry = (job) => {
-  message.loading(`正在重試 Job: ${job.jobId}...`, 1);
-  setTimeout(() => {
-    message.success(`Job 重試成功: ${job.jobId}`);
-  }, 1000);
-  // 實際重試邏輯
-};
-
-const handleJobCancel = (job) => {
-  Modal.confirm({
-    title: '確認取消',
-    content: `確定要取消 Job「${job.jobId}」嗎？`,
-    okText: '確定',
-    cancelText: '取消',
-    onOk() {
-      message.success(`已取消 Job: ${job.jobId}`);
-      // 實際取消邏輯
-    }
-  });
-};
-
-const handleJobDelete = (job) => {
-  Modal.confirm({
-    title: '確認刪除',
-    content: `確定要刪除 Job「${job.jobId}」嗎？此操作無法復原。`,
-    okText: '確定刪除',
-    cancelText: '取消',
-    okType: 'danger',
-    onOk() {
-      message.success(`已刪除 Job: ${job.jobId}`);
-      // 實際刪除邏輯
-    }
-  });
-};
+onMounted(async () => {
+  // 頁面載入時取得資料
+  await fetchJobs();
+});
 </script>
 
 <style scoped>

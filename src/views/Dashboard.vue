@@ -44,17 +44,31 @@
         <component :is="currentComponent" />
       </a-layout-content>
 
-      <!-- 浮動登出按鈕 -->
-      <a-button 
-        @click="handleLogout"
-        class="floating-logout-button"
-        size="large"
-      >
-        <template #icon>
-          <LogoutOutlined />
-        </template>
-        登出
-      </a-button>
+      <!-- 右上角使用者帳戶按鈕 -->
+      <div class="floating-user-button">
+        <a-dropdown placement="bottomRight" :trigger="['click']">
+          <a-button class="user-button" size="large">
+            <UserOutlined />
+            <span class="username">{{ username }}</span>
+            <DownOutlined style="margin-left: 4px; font-size: 12px" />
+          </a-button>
+          <template #overlay>
+            <a-menu class="user-menu" @click="handleUserMenuClick">
+              <a-menu-item key="profile" disabled>
+                <div class="user-info">
+                  <div class="user-name">{{ username }}</div>
+                  <div class="user-email">{{ userEmail }}</div>
+                </div>
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="logout">
+                <LogoutOutlined style="margin-right: 8px; color: #ef4444" />
+                <span style="color: #ef4444">登出</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </div>
     </a-layout>
   </a-layout>
 </template>
@@ -69,7 +83,10 @@ import {
   AppstoreOutlined,
   MonitorOutlined,
   FileTextOutlined,
-  LogoutOutlined
+  LogoutOutlined,
+  UserOutlined,
+  DownOutlined,
+  SettingOutlined
 } from '@ant-design/icons-vue';
 import Overview from '../components/Overview.vue';
 import UserManagement from '../components/UserManagement.vue';
@@ -79,6 +96,10 @@ import Audit from '../components/Audit.vue';
 
 const router = useRouter();
 const selectedKeys = ref(['overview']);
+
+// 使用者資訊（假資料）
+const username = ref('王小明');
+const userEmail = ref('wang.xiaoming@company.com');
 
 const components = {
   overview: markRaw(Overview),
@@ -94,10 +115,27 @@ const handleMenuClick = ({ key }) => {
   selectedKeys.value = [key];
 };
 
+// 處理使用者選單點擊
+const handleUserMenuClick = ({ key }) => {
+  switch (key) {
+    case 'profile-settings':
+      message.info('個人資料功能開發中');
+      break;
+    case 'settings':
+      message.info('系統設定功能開發中');
+      break;
+    case 'logout':
+      handleLogout();
+      break;
+  }
+};
+
 const handleLogout = () => {
   message.success('登出成功！');
   // 清除登入狀態（如果有使用 localStorage 或 session）
-  // localStorage.removeItem('token');
+  localStorage.removeItem('token');
+  localStorage.removeItem('username');
+  localStorage.removeItem('userEmail');
   router.push('/login');
 };
 </script>
@@ -169,20 +207,27 @@ const handleLogout = () => {
   background: #475569;
 }
 
-/* 浮動登出按鈕 */
-.floating-logout-button {
+.content {
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* 右上角使用者按鈕 */
+.floating-user-button {
   position: fixed;
   top: 24px;
   right: 24px;
   z-index: 1000;
+}
+
+.user-button {
   height: 44px;
-  padding: 0 20px;
+  padding: 0 16px;
   font-size: 15px;
   font-weight: 500;
-  background: #b4b7bb;
-  color: white;
-  border: none;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+  background: white;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -190,20 +235,82 @@ const handleLogout = () => {
   transition: all 0.3s ease;
 }
 
-.floating-logout-button:hover {
-  background: #4b5563 !important;
-  color: white !important;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4);
+.user-button:hover {
+  background: #f9fafb !important;
+  border-color: #d1d5db !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
-.floating-logout-button:active {
-  transform: translateY(0);
-  background: #374151 !important;
+.user-button .anticon-user {
+  font-size: 16px;
+  color: #667eea;
 }
 
-.content {
-  background: #f5f5f5;
-  min-height: 100vh;
+.username {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1f2937;
+}
+
+.user-button .anticon-down {
+  color: #9ca3af;
+}
+
+/* 使用者下拉選單 */
+.user-menu {
+  min-width: 220px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 8px;
+}
+
+.user-info {
+  padding: 8px 4px;
+}
+
+.user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.user-email {
+  font-size: 13px;
+  color: #6b7280;
+  word-break: break-all;
+}
+
+.user-menu :deep(.ant-dropdown-menu-item) {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.user-menu :deep(.ant-dropdown-menu-item:hover) {
+  background: #f3f4f6;
+}
+
+.user-menu :deep(.ant-dropdown-menu-item-disabled) {
+  cursor: default;
+}
+
+.user-menu :deep(.ant-dropdown-menu-item-disabled:hover) {
+  background: transparent;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .floating-user-button {
+    top: 16px;
+    right: 16px;
+  }
+
+  .username {
+    max-width: 80px;
+  }
 }
 </style>

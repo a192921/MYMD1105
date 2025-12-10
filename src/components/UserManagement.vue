@@ -133,71 +133,40 @@ const fetchUsers = async () => {
     // 檢查回應資料結構
     console.log('API 回應:', response.data);
 
-    // 處理不同的 API 回應格式
+    // 根據你的 API 格式：{ data: [ { userId, email, displayName } ] }
     let users = [];
-    let total = 0;
-
-    if (response.data) {
-      // 格式 1: { data: { users: [...], total: 100 } }
-      if (response.data.data && response.data.data.users) {
-        users = response.data.data.users;
-        total = response.data.data.total || users.length;
-      }
-      // 格式 2: { data: { items: [...], total: 100 } }
-      else if (response.data.data && response.data.data.items) {
-        users = response.data.data.items;
-        total = response.data.data.total || users.length;
-      }
-      // 格式 3: { data: [...] }
-      else if (Array.isArray(response.data.data)) {
-        users = response.data.data;
-        total = users.length;
-      }
-      // 格式 4: { users: [...], total: 100 }
-      else if (response.data.users) {
-        users = response.data.users;
-        total = response.data.total || users.length;
-      }
-      // 格式 5: 直接是陣列 [...]
-      else if (Array.isArray(response.data)) {
-        users = response.data;
-        total = users.length;
-      }
+    
+    if (response.data && response.data.data) {
+      users = response.data.data;
+    } else if (response.data) {
+      users = response.data;
     }
 
-    // 映射資料
+    // 映射資料到表格格式
     userData.value = users.map((user, index) => ({
-      key: user.id?.toString() || user.key?.toString() || index.toString(),
-      customerId: user.customerId || user.customer_id || user.customerId || '-',
-      username: user.username || user.name || user.userName || '-',
-      email: user.email || user.emailAddress || user.mail || '-',
+      key: user.userId || index.toString(),  // 使用 userId 作為 key
+      customerId: user.userId,                // 顯示 userId 在 customer_ID 欄位
+      username: user.displayName,             // 顯示 displayName 在 Username 欄位
+      email: user.email,                      // 顯示 email
     }));
 
-    // 更新分頁資訊
-    paginationConfig.value.total = total;
+    // 更新分頁資訊（如果 API 沒有回傳 total，就用陣列長度）
+    paginationConfig.value.total = response.data.total || users.length;
 
-    message.success(`載入 ${userData.value.length} 筆使用者資料`);
+    message.success(`成功載入 ${userData.value.length} 筆使用者資料`);
   } catch (error) {
     console.error('取得使用者列表失敗:', error);
     message.error('載入使用者列表失敗');
 
-    // 使用假資料作為備用
+    // 使用假資料作為備用（符合你的 API 格式）
     userData.value = [
-      { key: '1', customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com' },
-      { key: '2', customerId: 'NVT00134', username: 'anna', email: 'anna@example.com' },
-      { key: '3', customerId: 'NVT03134', username: 'Hailey', email: 'Hailey@example.com' },
-      { key: '4', customerId: 'NVT00220', username: 'Eric', email: 'Eric@example.com' },
-      { key: '5', customerId: 'NVT03334', username: 'Hazel', email: 'Hazel@example.com' },
-      { key: '6', customerId: 'NVT03131', username: 'Er', email: 'Er@example.com' },
-      { key: '7', customerId: 'NVT023221', username: 'NY', email: 'NY@example.com' },
-      { key: '8', customerId: 'NVT02131', username: 'Angela', email: 'Angela@example.com' },
-      { key: '9', customerId: 'NVT00121', username: 'Alice', email: 'Alice@example.com' },
-      { key: '10', customerId: 'NVT00135', username: 'Nike', email: 'Nike@example.com' },
-      { key: '11', customerId: 'NVT03135', username: 'Kiki', email: 'Kiki@example.com' },
-      { key: '12', customerId: 'NVT00221', username: 'KC', email: 'KC@example.com' },
-      { key: '13', customerId: 'NVT03335', username: 'Eva', email: 'Eva@example.com' },
+      { key: 'Queena_Wu', customerId: 'Queena_Wu', username: 'Queena', email: 'Queena@gmail.com' },
+      { key: 'John_Doe', customerId: 'John_Doe', username: 'John', email: 'John@gmail.com' },
+      { key: 'Amy_Chen', customerId: 'Amy_Chen', username: 'Amy', email: 'Amy@gmail.com' },
+      { key: 'Eric_Lin', customerId: 'Eric_Lin', username: 'Eric', email: 'Eric@gmail.com' },
+      { key: 'Anna_Wang', customerId: 'Anna_Wang', username: 'Anna', email: 'Anna@gmail.com' },
     ];
-    paginationConfig.value.total = 13;
+    paginationConfig.value.total = 5;
   } finally {
     loading.value = false;
   }

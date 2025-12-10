@@ -116,6 +116,7 @@ const columns = [
 // 取得使用者列表
 const fetchUsers = async () => {
   loading.value = true;
+  
   try {
     // 建立查詢參數
     const params = {
@@ -130,28 +131,67 @@ const fetchUsers = async () => {
 
     const response = await api.get('/users', { params });
 
-    // 檢查回應資料結構
-    console.log('API 回應:', response.data);
-
-    // 根據你的 API 格式：{ data: [ { userId, email, displayName } ] }
+    // 根據你的 API 格式：{ res: { status: true, data: [...] } }
+    console.log('API 回應:', response);
+    
     let users = [];
     
-    if (response.data && response.data.data) {
+    // 檢查你的 API 格式
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      // 格式: { data: { res: { data: [...] } } }
+      users = response.data.res.data;
+      console.log('✓ 使用格式: response.data.res.data');
+    } else if (response.res && Array.isArray(response.res.data)) {
+      // 格式: { res: { data: [...] } }
+      users = response.res.data;
+      console.log('✓ 使用格式: response.res.data');
+    } else if (response.data && Array.isArray(response.data.data)) {
+      // 備用格式: { data: { data: [...] } }
       users = response.data.data;
-    } else if (response.data) {
+      console.log('✓ 使用格式: response.data.data');
+    } else if (Array.isArray(response.data)) {
+      // 備用格式: { data: [...] }
       users = response.data;
+      console.log('✓ 使用格式: response.data');
+    } else {
+      console.error('❌ 無法解析 API 回應格式:', response);
+      throw new Error('API 回應格式不正確');
+    }
+
+    console.log('解析後的使用者資料:', users);
+    console.log('使用者數量:', users.length);
+
+    // 檢查是否成功取得資料
+    if (!Array.isArray(users) || users.length === 0) {
+      console.warn('⚠️ 沒有取得任何使用者資料');
+      userData.value = [];
+      paginationConfig.value.total = 0;
+      message.warning('目前沒有使用者資料');
+      return;
+    }
+
+    // 顯示第一筆資料
+    if (users.length > 0) {
+      console.log('第一筆使用者:', users[0]);
     }
 
     // 映射資料到表格格式
+    // API 欄位: userId, email, displayName
     userData.value = users.map((user, index) => ({
-      key: user.userId || index.toString(),  // 使用 userId 作為 key
-      customerId: user.userId,                // 顯示 userId 在 customer_ID 欄位
-      username: user.displayName,             // 顯示 displayName 在 Username 欄位
-      email: user.email,                      // 顯示 email
+      key: user.userId || index.toString(),
+      customerId: user.userId,      // userId → customer_ID
+      username: user.displayName,   // displayName → Username
+      email: user.email,            // email → email
     }));
 
-    // 更新分頁資訊（如果 API 沒有回傳 total，就用陣列長度）
-    paginationConfig.value.total = response.data.total || users.length;
+    console.log('映射後的表格資料:', userData.value);
+
+    // 更新分頁資訊
+    const total = response.data?.res?.total || 
+                  response.res?.total || 
+                  response.data?.total || 
+                  users.length;
+    paginationConfig.value.total = total;
 
     message.success(`成功載入 ${userData.value.length} 筆使用者資料`);
   } catch (error) {

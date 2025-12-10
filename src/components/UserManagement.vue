@@ -130,30 +130,53 @@ const fetchUsers = async () => {
 
     const response = await api.get('/users', { params });
 
-    // 假設 API 回傳格式：
-    // {
-    //   success: true,
-    //   data: {
-    //     users: [
-    //       { id: 1, customerId: 'NVT00120', username: 'Amy', email: 'Amy@example.com' }
-    //     ],
-    //     total: 100,
-    //     page: 1,
-    //     pageSize: 20
-    //   }
-    // }
+    // 檢查回應資料結構
+    console.log('API 回應:', response.data);
 
-    userData.value = response.data.data.users.map(user => ({
-      key: user.id.toString(),
-      customerId: user.customerId,
-      username: user.username,
-      email: user.email,
+    // 處理不同的 API 回應格式
+    let users = [];
+    let total = 0;
+
+    if (response.data) {
+      // 格式 1: { data: { users: [...], total: 100 } }
+      if (response.data.data && response.data.data.users) {
+        users = response.data.data.users;
+        total = response.data.data.total || users.length;
+      }
+      // 格式 2: { data: { items: [...], total: 100 } }
+      else if (response.data.data && response.data.data.items) {
+        users = response.data.data.items;
+        total = response.data.data.total || users.length;
+      }
+      // 格式 3: { data: [...] }
+      else if (Array.isArray(response.data.data)) {
+        users = response.data.data;
+        total = users.length;
+      }
+      // 格式 4: { users: [...], total: 100 }
+      else if (response.data.users) {
+        users = response.data.users;
+        total = response.data.total || users.length;
+      }
+      // 格式 5: 直接是陣列 [...]
+      else if (Array.isArray(response.data)) {
+        users = response.data;
+        total = users.length;
+      }
+    }
+
+    // 映射資料
+    userData.value = users.map((user, index) => ({
+      key: user.id?.toString() || user.key?.toString() || index.toString(),
+      customerId: user.customerId || user.customer_id || user.customerId || '-',
+      username: user.username || user.name || user.userName || '-',
+      email: user.email || user.emailAddress || user.mail || '-',
     }));
 
     // 更新分頁資訊
-    paginationConfig.value.total = response.data.data.total;
+    paginationConfig.value.total = total;
 
-    message.success('使用者列表載入成功');
+    message.success(`載入 ${userData.value.length} 筆使用者資料`);
   } catch (error) {
     console.error('取得使用者列表失敗:', error);
     message.error('載入使用者列表失敗');

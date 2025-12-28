@@ -15,7 +15,12 @@
         <!-- 功能列表欄位 -->
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
-            <a-button type="primary" ghost @click.stop="openUserModal(record)">
+            <a-button 
+              type="primary" 
+              ghost 
+              @click.stop="openUserModal(record)"
+              :loading="record.modalLoading"
+            >
               授權使用者
             </a-button>
           </template>
@@ -24,10 +29,25 @@
         <!-- 展開：已授權使用者 -->
         <template #expandedRowRender="{ record: feature }">
           <div class="expanded-section">
-            <h4 class="section-title">已授權使用者</h4>
+            <div class="expanded-header">
+              <h4 class="section-title">已授權使用者</h4>
+              
+              <!-- 搜尋輸入框 -->
+              <a-input
+                v-model:value="authorizedUserSearchText[feature.key]"
+                placeholder="搜尋使用者名稱或 Email"
+                style="width: 300px"
+                allow-clear
+              >
+                <template #prefix>
+                  <SearchOutlined style="color: #9ca3af" />
+                </template>
+              </a-input>
+            </div>
+            
             <a-table
               :columns="authorizedUserColumns"
-              :data-source="feature.users"
+              :data-source="getFilteredUsers(feature)"
               :loading="feature.usersLoading"
               size="small"
               :pagination="false"
@@ -85,42 +105,70 @@
       :footer="null"
     >
       <div class="modal-content">
-        <h3 class="modal-feature-name">功能：{{ currentFeature?.featureName }}</h3>
+        <div class="modal-header-info">
+          <div>
+            <h3 class="modal-feature-name">功能：{{ currentFeature?.featureName }}</h3>
+            <p class="modal-feature-desc">選擇要授權的使用者</p>
+          </div>
+          <div class="modal-stats">
+            <a-tag color="green">
+              已授權：{{ currentFeature?.users?.length || 0 }} 位
+            </a-tag>
+            <a-tag color="blue">
+              未授權：{{ mappedUsers.length }} 位
+            </a-tag>
+          </div>
+        </div>
         
-        <a-table
-          :columns="allUserColumns"
-          :data-source="mappedUsers"
-          :pagination="false"
-          :scroll="{ y: 400 }"
-          class="users-table"
+        <a-divider style="margin: 16px 0" />
+        
+        <!-- 如果沒有未授權使用者 -->
+        <a-empty 
+          v-if="mappedUsers.length === 0"
+          description="所有使用者都已授權"
+          :image="Empty.PRESENTED_IMAGE_SIMPLE"
         >
-          <template #bodyCell="{ column, record: user }">
-            <!-- Email 特殊樣式 -->
-            <template v-if="column.key === 'email'">
-              <span style="color: #3b82f6">{{ user.email }}</span>
-            </template>
-            
-            <!-- 授權開關 -->
-            <template v-if="column.key === 'status'">
-              <a-space>
-                <a-switch
-                  :checked="user.authorized"
-                  :loading="user.loading"
-                  size="small"
-                  @change="(checked) => toggleAuthorize(checked, user)"
-                />
-                <span 
-                  :style="{
-                    color: user.authorized ? '#10b981' : '#9ca3af',
-                    fontWeight: 500
-                  }"
-                >
-                  {{ user.authorized ? '已授權' : '未授權' }}
-                </span>
-              </a-space>
-            </template>
+          <template #image>
+            <CheckCircleOutlined style="font-size: 48px; color: #10b981" />
           </template>
-        </a-table>
+        </a-empty>
+        
+        <!-- 未授權使用者列表 -->
+        <div v-else>
+          <h4 class="modal-section-title">未授權使用者列表</h4>
+          
+          <a-table
+            :columns="unauthorizedUserColumns"
+            :data-source="mappedUsers"
+            :pagination="false"
+            :scroll="{ y: 400 }"
+            class="users-table"
+          >
+            <template #bodyCell="{ column, record: user }">
+              <!-- Customer ID -->
+              <template v-if="column.key === 'customerId'">
+                <span>{{ user.customerId }}</span>
+              </template>
+              
+              <!-- Email 特殊樣式 -->
+              <template v-if="column.key === 'email'">
+                <span style="color: #3b82f6">{{ user.email }}</span>
+              </template>
+              
+              <!-- 授權按鈕 -->
+              <template v-if="column.key === 'action'">
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="user.loading"
+                  @click="authorizeUser(user)"
+                >
+                  授權
+                </a-button>
+              </template>
+            </template>
+          </a-table>
+        </div>
       </div>
     </a-modal>
   </div>
@@ -128,7 +176,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { message, Modal } from 'ant-design-vue';
+import { message, Modal, Empty } from 'ant-design-vue';
+import { SearchOutlined, CheckCircleOutlined } from '@ant-design/icons-vue';
 import { api } from '../utils/api';
 
 /* ================= 狀態 ================= */
@@ -138,6 +187,7 @@ const expandedRowKeys = ref([]);
 const tableLoading = ref(false);
 const userModalVisible = ref(false);
 const currentFeature = ref(null);
+const authorizedUserSearchText = ref({}); // 儲存每個功能的搜尋文字
 
 /* ================= 欄位定義 ================= */
 const featureColumns = [
@@ -161,6 +211,13 @@ const allUserColumns = [
   { title: '授權狀態', key: 'status', width: 150, align: 'center' }
 ];
 
+const unauthorizedUserColumns = [
+  { title: 'Customer ID', dataIndex: 'customerId', key: 'customerId', width: 150 },
+  { title: 'Username', dataIndex: 'username', key: 'username', width: 150 },
+  { title: 'Email', dataIndex: 'email', key: 'email', width: 250 },
+  { title: '操作', key: 'action', width: 100, align: 'center' }
+];
+
 /* ================= 計算屬性：合併授權狀態 ================= */
 const mappedUsers = computed(() => {
   if (!currentFeature.value) return [];
@@ -168,13 +225,39 @@ const mappedUsers = computed(() => {
   // 取得已授權使用者的 ID 列表
   const authorizedIds = currentFeature.value.users.map(u => u.key);
   
-  // 為所有使用者加上授權狀態
-  return allUsers.value.map(u => ({
-    ...u,
-    authorized: authorizedIds.includes(u.key),
-    loading: false
-  }));
+  // 只返回未授權的使用者
+  return allUsers.value
+    .filter(u => !authorizedIds.includes(u.key)) // 過濾掉已授權的
+    .map(u => ({
+      ...u,
+      authorized: false,
+      loading: false
+    }));
 });
+
+// 過濾已授權使用者列表（根據搜尋文字）
+const getFilteredUsers = (feature) => {
+  const searchText = authorizedUserSearchText.value[feature.key];
+  
+  // 如果沒有搜尋文字，返回所有使用者
+  if (!searchText || searchText.trim() === '') {
+    return feature.users;
+  }
+  
+  // 將搜尋文字轉為小寫，進行不分大小寫的搜尋
+  const lowerSearchText = searchText.toLowerCase().trim();
+  
+  // 過濾使用者：根據 username、email 或 customerId
+  return feature.users.filter(user => {
+    const username = (user.username || '').toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    const customerId = (user.customerId || '').toLowerCase();
+    
+    return username.includes(lowerSearchText) || 
+           email.includes(lowerSearchText) || 
+           customerId.includes(lowerSearchText);
+  });
+};
 
 /* ================= API 呼叫函數 ================= */
 
@@ -201,7 +284,8 @@ const fetchFeatures = async () => {
       featureName: f.name || f.featureName,
       description: f.description,
       users: [], // 初始為空，展開時才載入
-      usersLoading: false
+      usersLoading: false,
+      modalLoading: false // 用於 Modal 打開時的載入狀態
     }));
     
     message.success('功能列表載入成功');
@@ -215,14 +299,16 @@ const fetchFeatures = async () => {
         featureName: 'VESA 轉換',
         description: 'VESA 相關功能',
         users: [],
-        usersLoading: false
+        usersLoading: false,
+        modalLoading: false
       },
       {
         key: '2',
         featureName: '報表匯出',
         description: 'CSV / Excel 匯出',
         users: [],
-        usersLoading: false
+        usersLoading: false,
+        modalLoading: false
       }
     ];
   } finally {
@@ -318,6 +404,12 @@ const fetchAllUsers = async () => {
 const handleExpand = async (expanded, feature) => {
   if (expanded) {
     expandedRowKeys.value = [feature.key];
+    
+    // 初始化該功能的搜尋文字（如果還沒有的話）
+    if (!authorizedUserSearchText.value[feature.key]) {
+      authorizedUserSearchText.value[feature.key] = '';
+    }
+    
     // 展開時載入該功能的已授權使用者
     await fetchFeatureUsers(feature);
   } else {
@@ -326,9 +418,28 @@ const handleExpand = async (expanded, feature) => {
 };
 
 // 打開授權使用者 Modal
-const openUserModal = (feature) => {
-  currentFeature.value = feature;
-  userModalVisible.value = true;
+const openUserModal = async (feature) => {
+  // 設置加載狀態
+  feature.modalLoading = true;
+  
+  try {
+    // 先載入該功能的已授權使用者列表
+    console.log('正在載入授權使用者列表...');
+    await fetchFeatureUsers(feature);
+    console.log('已載入授權使用者列表:', feature.users);
+    
+    // 設置當前功能
+    currentFeature.value = feature;
+    
+    // 載入成功後才打開 Modal
+    userModalVisible.value = true;
+  } catch (error) {
+    console.error('載入授權使用者列表失敗:', error);
+    message.error('載入授權使用者列表失敗，請重試');
+  } finally {
+    // 清除加載狀態
+    feature.modalLoading = false;
+  }
 };
 
 // 關閉 Modal
@@ -367,6 +478,33 @@ const toggleAuthorize = async (checked, user) => {
   } catch (error) {
     console.error('更新授權失敗:', error);
     message.error('更新授權失敗，請重試');
+  } finally {
+    user.loading = false;
+  }
+};
+
+// 授權使用者（在 Modal 中點擊授權按鈕）
+const authorizeUser = async (user) => {
+  const featureId = currentFeature.value.key;
+  
+  user.loading = true;
+  
+  try {
+    // API: POST /api/admin/features/{featureId}/customers
+    await api.post(`/api/admin/features/${featureId}/customers`, [
+      {
+        account: user.customerId,
+        mail: user.email
+      }
+    ]);
+    
+    message.success(`已授權 ${user.username}`);
+    
+    // 重新載入該功能的使用者列表
+    await fetchFeatureUsers(currentFeature.value);
+  } catch (error) {
+    console.error('授權失敗:', error);
+    message.error('授權失敗，請重試');
   } finally {
     user.loading = false;
   }
@@ -435,11 +573,18 @@ onMounted(() => {
   padding: 24px;
 }
 
+.expanded-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 .section-title {
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
-  margin-bottom: 16px;
+  margin: 0;
 }
 
 .authorized-users-table {
@@ -459,11 +604,24 @@ onMounted(() => {
   padding-top: 16px;
 }
 
+.modal-header-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .modal-feature-name {
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
-  margin-bottom: 16px;
+  margin: 0;
+}
+
+.modal-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 12px;
 }
 
 .users-table {

@@ -39,10 +39,19 @@
             :max-tag-count="2"
           />
 
+          <!-- 每頁筆數 -->
+          <a-select
+            v-model:value="pageSize"
+            placeholder="每頁筆數"
+            style="width: 120px"
+            :options="pageSizeOptions"
+          />
+
           <!-- 查詢按鈕 -->
           <a-button 
             type="primary" 
             @click="handleSearch"
+            :loading="loading"
           >
             查詢
           </a-button>
@@ -51,10 +60,11 @@
 
       <a-table
         :columns="columns"
-        :data-source="filteredData"
-        :pagination="false"
+        :data-source="auditData"
+        :pagination="paginationConfig"
         :loading="loading"
-        :scroll="{ y: 'calc(100vh - 320px)' }"
+        :scroll="{ y: 'calc(100vh - 380px)' }"
+        @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'details'">
@@ -69,20 +79,32 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { CalendarOutlined } from '@ant-design/icons-vue';
+import { message } from 'ant-design-vue';
 import dayjs from 'dayjs';
+import { api } from '../utils/api';
 
 const loading = ref(false);
 const startDate = ref(null);
 const endDate = ref(null);
 const actionFilter = ref([]);
+const pageSize = ref(20);
+const currentPage = ref(1);
+const totalRecords = ref(0);
 
 const actionOptions = [
   { label: 'upload', value: 'upload' },
   { label: 'login', value: 'login' },
   { label: 'run', value: 'run' },
   { label: 'delete', value: 'delete' }
+];
+
+const pageSizeOptions = [
+  { label: '20 筆/頁', value: 20 },
+  { label: '50 筆/頁', value: 50 },
+  { label: '100 筆/頁', value: 100 },
+  { label: '200 筆/頁', value: 200 }
 ];
 
 const columns = [
@@ -118,67 +140,128 @@ const columns = [
   }
 ];
 
-const auditData = ref([
-  { key: '1', logId: '00000110', customerId: 'NVT00120', action: 'login', details: 'login2022', timestamp: '20220102 09:20:30' },
-  { key: '2', logId: '00000104', customerId: 'NVT00134', action: 'upload', details: 'upload', timestamp: '20220102 09:20:30' },
-  { key: '3', logId: '00003134', customerId: 'NVT03134', action: 'run', details: 'Run_01', timestamp: '20211102 09:20:30' },
-  { key: '4', logId: '00000220', customerId: 'NVT00220', action: 'delete', details: 'delete2', timestamp: '20230102 09:20:30' },
-  { key: '5', logId: '00000334', customerId: 'NVT03334', action: 'delete', details: 'delete', timestamp: '20240102 09:20:30' },
-  { key: '6', logId: '00003131', customerId: 'NVT03131', action: 'delete', details: 'delete', timestamp: '20250102 09:20:30' },
-  { key: '7', logId: '000023221', customerId: 'NVT023221', action: 'run', details: 'Run_22', timestamp: '20250102 09:20:30' },
-  { key: '8', logId: '00002131', customerId: 'NVT02131', action: 'run', details: 'Run_233', timestamp: '20120102 09:20:22' },
-  { key: '9', logId: '000002331', customerId: 'NVT02331', action: 'run', details: 'run', timestamp: '20210102 10:20:50' },
-  { key: '10', logId: '000013221', customerId: 'NVT013221', action: 'upload', details: 'upload', timestamp: '20220102 00:20:34' },
-  { key: '11', logId: '000013331', customerId: 'NVT013331', action: 'run', details: 'run', timestamp: '20220102 09:10:33' },
-  { key: '12', logId: '000013221', customerId: 'NVT013221', action: 'login', details: 'login', timestamp: '20220112 09:15:20' },
-  { key: '13', logId: '000013223', customerId: 'NVT013223', action: 'login', details: 'login', timestamp: '20221102 09:20:11' },
-  { key: '14', logId: '000013224', customerId: 'NVT013224', action: 'upload', details: 'upload', timestamp: '20221102 10:30:11' },
-  { key: '15', logId: '000013225', customerId: 'NVT013225', action: 'delete', details: 'delete_file', timestamp: '20221103 11:20:11' },
-  { key: '16', logId: '000013226', customerId: 'NVT013226', action: 'run', details: 'Run_44', timestamp: '20221104 09:20:11' },
-  { key: '17', logId: '000013227', customerId: 'NVT013227', action: 'login', details: 'login', timestamp: '20221105 09:20:11' },
-  { key: '18', logId: '000013228', customerId: 'NVT013228', action: 'upload', details: 'upload', timestamp: '20221106 09:20:11' }
-]);
+const auditData = ref([]);
 
-const filteredData = computed(() => {
-  let result = auditData.value;
+// 分頁配置
+const paginationConfig = computed(() => ({
+  current: currentPage.value,
+  pageSize: pageSize.value,
+  total: totalRecords.value,
+  showSizeChanger: false,
+  showTotal: (total) => `共 ${total} 筆記錄`,
+  showQuickJumper: true,
+}));
 
-  // 日期篩選
-  if (startDate.value) {
-    const start = dayjs(startDate.value).format('YYYYMMDD');
-    result = result.filter(item => {
-      const itemDate = item.timestamp.split(' ')[0];
-      return itemDate >= start;
-    });
-  }
-
-  if (endDate.value) {
-    const end = dayjs(endDate.value).format('YYYYMMDD');
-    result = result.filter(item => {
-      const itemDate = item.timestamp.split(' ')[0];
-      return itemDate <= end;
-    });
-  }
-
-  // Action 篩選
-  if (actionFilter.value && actionFilter.value.length > 0) {
-    result = result.filter(item =>
-      actionFilter.value.includes(item.action)
-    );
-  }
-
-  return result;
-});
-
-const isLink = (details) => {
-  return details.includes('Upload_image') || details.includes('Upload');
-};
-
-const handleSearch = () => {
+// API 請求函數
+const fetchAuditLogs = async () => {
   loading.value = true;
-  setTimeout(() => {
+  
+  try {
+    // 構建 API 參數
+    const params = {
+      page: currentPage.value,
+      size: pageSize.value
+    };
+
+    // 添加日期參數
+    if (startDate.value) {
+      params.startDate = dayjs(startDate.value).format('YYYY-MM-DD');
+    }
+    if (endDate.value) {
+      params.endDate = dayjs(endDate.value).format('YYYY-MM-DD');
+    }
+
+    // 添加 action 篩選參數（如果 API 支援）
+    if (actionFilter.value && actionFilter.value.length > 0) {
+      params.actions = actionFilter.value.join(',');
+    }
+
+    // 使用 api 工具發送請求
+    const response = await api.get('/api/audit-logs', { params });
+
+    console.log('審計記錄 API 回應:', response.data);
+
+    // 處理不同的回應格式
+    let logs = [];
+    let total = 0;
+
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      logs = response.data.res.data;
+      total = response.data.res.total || response.data.res.pagination?.total || logs.length;
+    } else if (response.data && Array.isArray(response.data.data)) {
+      logs = response.data.data;
+      total = response.data.total || response.data.pagination?.total || logs.length;
+    } else if (Array.isArray(response.data)) {
+      logs = response.data;
+      total = logs.length;
+    }
+
+    // 映射資料
+    auditData.value = logs.map((item, index) => ({
+      key: `${currentPage.value}-${index}`,
+      logId: item.log_id || item.logId || item.id,
+      customerId: item.customer_id || item.customerId || item.userId,
+      action: item.action,
+      details: item.details || item.detail,
+      timestamp: item.timestamp || item.created_at || item.createdAt
+    }));
+
+    totalRecords.value = total;
+
+    message.success('審計記錄載入成功');
+
+  } catch (error) {
+    console.error('獲取審計記錄失敗:', error);
+    message.error('獲取審計記錄失敗，請稍後再試');
+    
+    // 使用假資料作為後備
+    auditData.value = [
+      { key: '1', logId: '00000110', customerId: 'NVT00120', action: 'login', details: 'login2022', timestamp: '20220102 09:20:30' },
+      { key: '2', logId: '00000104', customerId: 'NVT00134', action: 'upload', details: 'upload', timestamp: '20220102 09:20:30' },
+      { key: '3', logId: '00003134', customerId: 'NVT03134', action: 'run', details: 'Run_01', timestamp: '20211102 09:20:30' },
+      { key: '4', logId: '00000220', customerId: 'NVT00220', action: 'delete', details: 'delete2', timestamp: '20230102 09:20:30' },
+      { key: '5', logId: '00000334', customerId: 'NVT03334', action: 'delete', details: 'delete', timestamp: '20240102 09:20:30' },
+      { key: '6', logId: '00003131', customerId: 'NVT03131', action: 'delete', details: 'delete', timestamp: '20250102 09:20:30' },
+      { key: '7', logId: '000023221', customerId: 'NVT023221', action: 'run', details: 'Run_22', timestamp: '20250102 09:20:30' },
+      { key: '8', logId: '00002131', customerId: 'NVT02131', action: 'run', details: 'Run_233', timestamp: '20120102 09:20:22' },
+      { key: '9', logId: '000002331', customerId: 'NVT02331', action: 'run', details: 'run', timestamp: '20210102 10:20:50' },
+      { key: '10', logId: '000013221', customerId: 'NVT013221', action: 'upload', details: 'upload', timestamp: '20220102 00:20:34' }
+    ];
+    totalRecords.value = 100;
+  } finally {
     loading.value = false;
-  }, 500);
+  }
 };
+
+// 處理查詢按鈕點擊
+const handleSearch = () => {
+  // 驗證日期範圍
+  if (startDate.value && endDate.value) {
+    if (dayjs(startDate.value).isAfter(dayjs(endDate.value))) {
+      message.warning('開始日期不能晚於結束日期');
+      return;
+    }
+  }
+
+  currentPage.value = 1; // 重置到第一頁
+  fetchAuditLogs();
+};
+
+// 處理表格變更（分頁、排序等）
+const handleTableChange = (pagination) => {
+  currentPage.value = pagination.current;
+  fetchAuditLogs();
+};
+
+// 判斷是否為連結
+const isLink = (details) => {
+  return details && (details.includes('Upload_image') || details.includes('Upload'));
+};
+
+// 初始載入資料
+onMounted(() => {
+  fetchAuditLogs();
+});
 </script>
 
 <style scoped>
@@ -208,6 +291,7 @@ const handleSearch = () => {
   color: #ef4444;
   text-decoration: underline;
   text-decoration-style: wavy;
+  cursor: pointer;
 }
 
 /* 表格斑馬紋 */

@@ -30,13 +30,11 @@
           </a-date-picker>
 
           <!-- Action 篩選 -->
-          <a-select
+          <a-input
             v-model:value="actionFilter"
-            mode="multiple"
-            placeholder="Action= upload/ login/ run/delete"
-            style="width: 280px"
-            :options="actionOptions"
-            :max-tag-count="2"
+            placeholder="輸入 Action"
+            style="width: 200px"
+            allow-clear
           />
 
           <!-- 每頁筆數 -->
@@ -67,10 +65,16 @@
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'details'">
-            <span :class="{'detail-link': isLink(record.details)}">
-              {{ record.details }}
+          <template v-if="column.key === 'detail'">
+            <span :class="{'detail-link': isLink(record.detail)}">
+              {{ record.detail || '-' }}
             </span>
+          </template>
+          <template v-else-if="column.key === 'outcome'">
+            <span>{{ record.outcome || '-' }}</span>
+          </template>
+          <template v-else-if="column.key === 'resultCode'">
+            <span>{{ record.resultCode || '-' }}</span>
           </template>
         </template>
       </a-table>
@@ -88,17 +92,10 @@ import { api } from '../utils/api';
 const loading = ref(false);
 const startDate = ref(null);
 const endDate = ref(null);
-const actionFilter = ref([]);
+const actionFilter = ref('');
 const pageSize = ref(20);
 const currentPage = ref(1);
 const totalRecords = ref(0);
-
-const actionOptions = [
-  { label: 'upload', value: 'upload' },
-  { label: 'login', value: 'login' },
-  { label: 'run', value: 'run' },
-  { label: 'delete', value: 'delete' }
-];
 
 const pageSizeOptions = [
   { label: '20 筆/頁', value: 20 },
@@ -109,31 +106,55 @@ const pageSizeOptions = [
 
 const columns = [
   { 
-    title: 'log_id', 
+    title: 'Log ID', 
     dataIndex: 'logId', 
     key: 'logId',
+    width: 100
+  },
+  { 
+    title: 'Request ID', 
+    dataIndex: 'requestId', 
+    key: 'requestId',
     width: 120
   },
   { 
-    title: 'customer_ID', 
-    dataIndex: 'customerId', 
-    key: 'customerId',
+    title: 'User ID', 
+    dataIndex: 'userId', 
+    key: 'userId',
+    width: 100
+  },
+  { 
+    title: 'Use Type', 
+    dataIndex: 'useType', 
+    key: 'useType',
+    width: 120
+  },
+  { 
+    title: 'Action', 
+    dataIndex: 'action', 
+    key: 'action',
     width: 150
   },
   { 
-    title: 'action', 
-    dataIndex: 'action', 
-    key: 'action',
+    title: 'Outcome', 
+    dataIndex: 'outcome', 
+    key: 'outcome',
     width: 120
   },
   { 
-    title: 'details', 
-    dataIndex: 'details', 
-    key: 'details',
-    width: 180
+    title: 'Result Code', 
+    dataIndex: 'resultCode', 
+    key: 'resultCode',
+    width: 120
   },
   { 
-    title: 'timestamp', 
+    title: 'Detail', 
+    dataIndex: 'detail', 
+    key: 'detail',
+    width: 150
+  },
+  { 
+    title: 'Timestamp', 
     dataIndex: 'timestamp', 
     key: 'timestamp',
     width: 200
@@ -151,6 +172,23 @@ const paginationConfig = computed(() => ({
   showTotal: (total) => `共 ${total} 筆記錄`,
   showQuickJumper: true,
 }));
+
+// 格式化時間戳記
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) return '-';
+  
+  try {
+    // 處理格式：20220102T22:48:30.8783871+08:00
+    // 轉換為：2022-01-02 22:48:30
+    const date = dayjs(timestamp);
+    if (date.isValid()) {
+      return date.format('YYYY-MM-DD HH:mm:ss');
+    }
+    return timestamp;
+  } catch (error) {
+    return timestamp;
+  }
+};
 
 // API 請求函數
 const fetchAuditLogs = async () => {
@@ -172,8 +210,8 @@ const fetchAuditLogs = async () => {
     }
 
     // 添加 action 篩選參數（如果 API 支援）
-    if (actionFilter.value && actionFilter.value.length > 0) {
-      params.actions = actionFilter.value.join(',');
+    if (actionFilter.value && actionFilter.value.trim()) {
+      params.action = actionFilter.value.trim();
     }
 
     // 使用 api 工具發送請求
@@ -181,34 +219,30 @@ const fetchAuditLogs = async () => {
 
     console.log('審計記錄 API 回應:', response.data);
 
-    // 處理不同的回應格式
-    let logs = [];
-    let total = 0;
+    // 根據實際 API 格式解析資料
+    if (response.data && response.data.status && response.data.data) {
+      const { useLogs = [], total = 0 } = response.data.data;
 
-    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
-      logs = response.data.res.data;
-      total = response.data.res.total || response.data.res.pagination?.total || logs.length;
-    } else if (response.data && Array.isArray(response.data.data)) {
-      logs = response.data.data;
-      total = response.data.total || response.data.pagination?.total || logs.length;
-    } else if (Array.isArray(response.data)) {
-      logs = response.data;
-      total = logs.length;
+      // 映射資料到表格格式
+      auditData.value = useLogs.map((item, index) => ({
+        key: item.logId || `${currentPage.value}-${index}`,
+        logId: item.logId || '-',
+        requestId: item.requestId || '-',
+        userId: item.userId || '-',
+        useType: item.useType || '-',
+        action: item.action || '-',
+        outcome: item.outcome || '-',
+        resultCode: item.resultCode || '-',
+        detail: item.detail || '-',
+        timestamp: formatTimestamp(item.timestamp)
+      }));
+
+      totalRecords.value = total;
+
+      message.success('審計記錄載入成功');
+    } else {
+      throw new Error('API 回應格式不正確');
     }
-
-    // 映射資料
-    auditData.value = logs.map((item, index) => ({
-      key: `${currentPage.value}-${index}`,
-      logId: item.log_id || item.logId || item.id,
-      customerId: item.customer_id || item.customerId || item.userId,
-      action: item.action,
-      details: item.details || item.detail,
-      timestamp: item.timestamp || item.created_at || item.createdAt
-    }));
-
-    totalRecords.value = total;
-
-    message.success('審計記錄載入成功');
 
   } catch (error) {
     console.error('獲取審計記錄失敗:', error);
@@ -216,16 +250,66 @@ const fetchAuditLogs = async () => {
     
     // 使用假資料作為後備
     auditData.value = [
-      { key: '1', logId: '00000110', customerId: 'NVT00120', action: 'login', details: 'login2022', timestamp: '20220102 09:20:30' },
-      { key: '2', logId: '00000104', customerId: 'NVT00134', action: 'upload', details: 'upload', timestamp: '20220102 09:20:30' },
-      { key: '3', logId: '00003134', customerId: 'NVT03134', action: 'run', details: 'Run_01', timestamp: '20211102 09:20:30' },
-      { key: '4', logId: '00000220', customerId: 'NVT00220', action: 'delete', details: 'delete2', timestamp: '20230102 09:20:30' },
-      { key: '5', logId: '00000334', customerId: 'NVT03334', action: 'delete', details: 'delete', timestamp: '20240102 09:20:30' },
-      { key: '6', logId: '00003131', customerId: 'NVT03131', action: 'delete', details: 'delete', timestamp: '20250102 09:20:30' },
-      { key: '7', logId: '000023221', customerId: 'NVT023221', action: 'run', details: 'Run_22', timestamp: '20250102 09:20:30' },
-      { key: '8', logId: '00002131', customerId: 'NVT02131', action: 'run', details: 'Run_233', timestamp: '20120102 09:20:22' },
-      { key: '9', logId: '000002331', customerId: 'NVT02331', action: 'run', details: 'run', timestamp: '20210102 10:20:50' },
-      { key: '10', logId: '000013221', customerId: 'NVT013221', action: 'upload', details: 'upload', timestamp: '20220102 00:20:34' }
+      { 
+        key: '1', 
+        logId: '1', 
+        requestId: 'req-1', 
+        userId: '1', 
+        useType: '-', 
+        action: 'TestAction', 
+        outcome: '-', 
+        resultCode: '-', 
+        detail: '-', 
+        timestamp: '2022-01-02 22:48:30' 
+      },
+      { 
+        key: '2', 
+        logId: '2', 
+        requestId: 'req-2', 
+        userId: '2', 
+        useType: 'upload', 
+        action: 'upload', 
+        outcome: 'success', 
+        resultCode: '200', 
+        detail: 'upload file', 
+        timestamp: '2022-01-03 10:20:15' 
+      },
+      { 
+        key: '3', 
+        logId: '3', 
+        requestId: 'req-3', 
+        userId: '3', 
+        useType: 'login', 
+        action: 'login', 
+        outcome: 'success', 
+        resultCode: '200', 
+        detail: 'user login', 
+        timestamp: '2022-01-04 09:15:42' 
+      },
+      { 
+        key: '4', 
+        logId: '4', 
+        requestId: 'req-4', 
+        userId: '4', 
+        useType: 'run', 
+        action: 'run', 
+        outcome: 'success', 
+        resultCode: '200', 
+        detail: 'Run_01', 
+        timestamp: '2022-01-05 14:30:20' 
+      },
+      { 
+        key: '5', 
+        logId: '5', 
+        requestId: 'req-5', 
+        userId: '5', 
+        useType: 'delete', 
+        action: 'delete', 
+        outcome: 'success', 
+        resultCode: '200', 
+        detail: 'delete file', 
+        timestamp: '2022-01-06 16:45:33' 
+      }
     ];
     totalRecords.value = 100;
   } finally {
@@ -254,8 +338,9 @@ const handleTableChange = (pagination) => {
 };
 
 // 判斷是否為連結
-const isLink = (details) => {
-  return details && (details.includes('Upload_image') || details.includes('Upload'));
+const isLink = (detail) => {
+  if (!detail || detail === '-') return false;
+  return detail.includes('Upload_image') || detail.includes('upload');
 };
 
 // 初始載入資料
@@ -286,7 +371,7 @@ onMounted(() => {
   align-items: center;
 }
 
-/* 讓 details 欄位中的連結顯示為紅色底線 */
+/* 讓 detail 欄位中的連結顯示為紅色底線 */
 .detail-link {
   color: #ef4444;
   text-decoration: underline;

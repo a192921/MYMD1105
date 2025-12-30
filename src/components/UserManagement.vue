@@ -5,17 +5,16 @@
     <a-card title="使用者權限" class="table-card">
       <template #extra>
         <a-space>
-          <a-input-search
+          <a-input
             v-model:value="searchText"
-            placeholder="Username"
+            placeholder="搜尋 Username"
             style="width: 250px"
-            @search="handleSearch"
-            :loading="loading"
+            allow-clear
           >
             <template #prefix>
               <SearchOutlined />
             </template>
-          </a-input-search>
+          </a-input>
           
           <a-button @click="handleRefresh" :loading="loading">
             <ReloadOutlined /> 重新整理
@@ -25,7 +24,7 @@
       
       <a-table
         :columns="columns"
-        :data-source="userData"
+        :data-source="filteredUserData"
         :pagination="paginationConfig"
         :loading="loading"
         :scroll="{ y: 'calc(100vh - 320px)' }"
@@ -55,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import { api } from '../utils/api'; // 引入 API 工具
@@ -75,6 +74,35 @@ const paginationConfig = ref({
   showSizeChanger: true,
   showTotal: (total) => `共 ${total} 筆資料`,
   pageSizeOptions: ['10', '20', '50', '100'],
+});
+
+// ============================================
+// 計算屬性：即時篩選使用者資料
+// ============================================
+const filteredUserData = computed(() => {
+  if (!searchText.value || !searchText.value.trim()) {
+    // 沒有搜尋文字，返回所有資料
+    paginationConfig.value.total = userData.value.length;
+    return userData.value;
+  }
+  
+  const filterText = searchText.value.toLowerCase().trim();
+  
+  // 根據 username、customerId、email 進行篩選
+  const filtered = userData.value.filter(user => {
+    const username = (user.username || '').toLowerCase();
+    const customerId = (user.customerId || '').toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    
+    return username.includes(filterText) || 
+           customerId.includes(filterText) || 
+           email.includes(filterText);
+  });
+  
+  // 更新分頁總數
+  paginationConfig.value.total = filtered.length;
+  
+  return filtered;
 });
 
 // ============================================
@@ -118,16 +146,11 @@ const fetchUsers = async () => {
   loading.value = true;
   
   try {
-    // 建立查詢參數
+    // 建立查詢參數（不再包含搜尋，改為前端篩選）
     const params = {
-      page: paginationConfig.value.current,
-      pageSize: paginationConfig.value.pageSize,
+      page: 1,
+      pageSize: 1000, // 取得所有資料，在前端進行篩選
     };
-
-    // 加入搜尋關鍵字
-    if (searchText.value) {
-      params.search = searchText.value;
-    }
 
     const response = await api.get('/users', { params });
 
@@ -165,7 +188,6 @@ const fetchUsers = async () => {
     if (!Array.isArray(users) || users.length === 0) {
       console.warn('⚠️ 沒有取得任何使用者資料');
       userData.value = [];
-      paginationConfig.value.total = 0;
       message.warning('目前沒有使用者資料');
       return;
     }
@@ -186,13 +208,6 @@ const fetchUsers = async () => {
 
     console.log('映射後的表格資料:', userData.value);
 
-    // 更新分頁資訊
-    const total = response.data?.res?.total || 
-                  response.res?.total || 
-                  response.data?.total || 
-                  users.length;
-    paginationConfig.value.total = total;
-
     message.success(`成功載入 ${userData.value.length} 筆使用者資料`);
   } catch (error) {
     console.error('取得使用者列表失敗:', error);
@@ -206,7 +221,6 @@ const fetchUsers = async () => {
       { key: 'Eric_Lin', customerId: 'Eric_Lin', username: 'Eric', email: 'Eric@gmail.com' },
       { key: 'Anna_Wang', customerId: 'Anna_Wang', username: 'Anna', email: 'Anna@gmail.com' },
     ];
-    paginationConfig.value.total = 5;
   } finally {
     loading.value = false;
   }
@@ -244,12 +258,6 @@ const updateUser = async (userId, userData) => {
 // 事件處理函數
 // ============================================
 
-// 搜尋按鈕
-const handleSearch = async () => {
-  paginationConfig.value.current = 1; // 重置到第一頁
-  await fetchUsers();
-};
-
 // 重新整理按鈕
 const handleRefresh = async () => {
   searchText.value = ''; // 清空搜尋
@@ -265,8 +273,6 @@ const handleTableChange = (pagination, filters, sorter) => {
   // 如果需要處理排序
   // const sortField = sorter.field;
   // const sortOrder = sorter.order;
-  
-  fetchUsers();
 };
 
 // 編輯使用者

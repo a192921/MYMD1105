@@ -58,7 +58,7 @@
 
       <a-table
         :columns="columns"
-        :data-source="auditData"
+        :data-source="filteredAuditData"
         :pagination="paginationConfig"
         :loading="loading"
         :scroll="{ y: 'calc(100vh - 380px)' }"
@@ -162,6 +162,19 @@ const columns = [
 ];
 
 const auditData = ref([]);
+const allAuditData = ref([]); // 儲存完整的 API 資料
+
+// 過濾後的資料（根據 action 篩選）
+const filteredAuditData = computed(() => {
+  if (!actionFilter.value || !actionFilter.value.trim()) {
+    return auditData.value;
+  }
+  
+  const filterText = actionFilter.value.toLowerCase().trim();
+  return auditData.value.filter(item => 
+    item.action.toLowerCase().includes(filterText)
+  );
+});
 
 // 分頁配置
 const paginationConfig = computed(() => ({
@@ -207,11 +220,6 @@ const fetchAuditLogs = async () => {
     }
     if (endDate.value) {
       params.endDate = dayjs(endDate.value).format('YYYY-MM-DD');
-    }
-
-    // 添加 action 篩選參數（如果 API 支援）
-    if (actionFilter.value && actionFilter.value.trim()) {
-      params.action = actionFilter.value.trim();
     }
 
     // 使用 api 工具發送請求
@@ -328,6 +336,7 @@ const handleSearch = () => {
   }
 
   currentPage.value = 1; // 重置到第一頁
+  actionFilter.value = ''; // 重置 action 篩選
   fetchAuditLogs();
 };
 

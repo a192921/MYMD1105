@@ -29,7 +29,7 @@
             </template>
           </a-date-picker>
 
-          <!-- Status 篩選 -->
+          <!-- Status 篩選 - 即時過濾 -->
           <a-select
             v-model:value="statusFilter"
             mode="multiple"
@@ -37,6 +37,7 @@
             style="width: 280px"
             :options="statusOptions"
             :max-tag-count="2"
+            allow-clear
           />
 
           <!-- 查詢按鈕 -->
@@ -62,7 +63,7 @@
 
       <a-table
         :columns="columns"
-        :data-source="jobData"
+        :data-source="filteredJobData"
         :pagination="paginationConfig"
         :loading="loading"
         :scroll="{ y: 'calc(100vh - 320px)' }"
@@ -159,8 +160,8 @@ import { api } from '../utils/api'; // 引入 API 工具
 // ============================================
 const loading = ref(false);
 const loadingFiles = ref({}); // 用於追蹤個別 Job 的檔案載入狀態
-const startDate = ref(null);
-const endDate = ref(null);
+const startDate = ref(dayjs());
+const endDate = ref(dayjs());
 const statusFilter = ref([]);
 const expandedRowKeys = ref([]);
 const jobData = ref([]);
@@ -181,6 +182,27 @@ const statusOptions = [
   { label: 'Done', value: 'Done' },
   { label: 'Failed', value: 'Failed' }
 ];
+
+// ============================================
+// 計算屬性：即時篩選 Job 資料
+// ============================================
+const filteredJobData = computed(() => {
+  if (!statusFilter.value || statusFilter.value.length === 0) {
+    // 沒有選擇狀態篩選，返回所有資料
+    paginationConfig.value.total = jobData.value.length;
+    return jobData.value;
+  }
+  
+  // 根據選擇的狀態進行篩選
+  const filtered = jobData.value.filter(job => 
+    statusFilter.value.includes(job.status)
+  );
+  
+  // 更新分頁總數
+  paginationConfig.value.total = filtered.length;
+  
+  return filtered;
+});
 
 // ============================================
 // 表格欄位設定
@@ -261,8 +283,8 @@ const fetchJobs = async () => {
   try {
     // 建立查詢參數
     const params = {
-      page: paginationConfig.value.current,
-      pageSize: paginationConfig.value.pageSize,
+      page: 1,
+      pageSize: 1000, // 取得所有資料，在前端進行篩選
     };
 
     // 加入日期篩選
@@ -273,38 +295,31 @@ const fetchJobs = async () => {
       params.endDate = dayjs(endDate.value).format('YYYY-MM-DD');
     }
 
-    // 加入狀態篩選
-    if (statusFilter.value && statusFilter.value.length > 0) {
-      params.status = statusFilter.value.join(',');
-    }
-
     const response = await api.get('/jobs', { params });
 
-    // 假設 API 回傳格式：
-    // {
-    //   success: true,
-    //   data: {
-    //     jobs: [...],
-    //     total: 100,
-    //     page: 1,
-    //     pageSize: 10
-    //   }
-    // }
+    console.log('Job 列表 API 回應:', response.data);
 
-    jobData.value = response.data.data.jobs.map(job => ({
-      key: job.id.toString(),
-      jobId: job.jobId,
-      customerId: job.customerId,
+    // 處理不同的回應格式
+    let jobs = [];
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      jobs = response.data.res.data;
+    } else if (response.data && Array.isArray(response.data.data)) {
+      jobs = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      jobs = response.data;
+    }
+
+    jobData.value = jobs.map(job => ({
+      key: job.id?.toString() || job.jobId,
+      jobId: job.jobId || job.id,
+      customerId: job.customerId || job.userId,
       status: job.status,
-      timestamp: job.timestamp,
+      timestamp: job.timestamp || job.createdAt,
       featureId: job.featureId,
       createdAt: job.createdAt,
       completedAt: job.completedAt,
       jobFiles: [], // 初始為空，展開時才載入
     }));
-
-    // 更新分頁資訊
-    paginationConfig.value.total = response.data.data.total;
 
     message.success('Job 列表載入成功');
   } catch (error) {
@@ -335,8 +350,29 @@ const fetchJobs = async () => {
         completedAt: '20220102 10:30:45',
         jobFiles: []
       },
+      { 
+        key: '3', 
+        jobId: '00000105', 
+        customerId: 'NVT00135', 
+        status: 'Pending', 
+        timestamp: '20220103 11:15:20',
+        featureId: 'FT002',
+        createdAt: '20220103 11:15:20',
+        completedAt: null,
+        jobFiles: []
+      },
+      { 
+        key: '4', 
+        jobId: '00000106', 
+        customerId: 'NVT00136', 
+        status: 'Failed', 
+        timestamp: '20220104 14:30:10',
+        featureId: 'FT003',
+        createdAt: '20220104 14:30:10',
+        completedAt: '20220104 14:45:30',
+        jobFiles: []
+      },
     ];
-    paginationConfig.value.total = 2;
   } finally {
     loading.value = false;
   }
@@ -348,30 +384,34 @@ const fetchJobFiles = async (jobId) => {
   try {
     const response = await api.get(`/jobs/${jobId}/files`);
 
-    // 假設 API 回傳格式：
-    // {
-    //   success: true,
-    //   data: [
-    //     { id: 1, fileId: 'F001', fileName: 'input.csv', ... }
-    //   ]
-    // }
+    console.log(`Job ${jobId} 檔案列表:`, response.data);
 
-    const files = response.data.data.map(file => ({
-      key: file.id.toString(),
-      fileId: file.fileId,
+    // 處理不同的回應格式
+    let files = [];
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      files = response.data.res.data;
+    } else if (response.data && Array.isArray(response.data.data)) {
+      files = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      files = response.data;
+    }
+
+    const mappedFiles = files.map(file => ({
+      key: file.id?.toString() || file.fileId,
+      fileId: file.fileId || file.id,
       fileName: file.fileName,
       fileType: file.fileType,
       fileSize: file.fileSize,
-      uploadTime: file.uploadTime,
+      uploadTime: file.uploadTime || file.createdAt,
     }));
 
     // 更新對應 Job 的檔案列表
     const job = jobData.value.find(j => j.jobId === jobId);
     if (job) {
-      job.jobFiles = files;
+      job.jobFiles = mappedFiles;
     }
 
-    return files;
+    return mappedFiles;
   } catch (error) {
     console.error(`取得 Job ${jobId} 的檔案列表失敗:`, error);
     message.error('載入檔案列表失敗');
@@ -455,7 +495,16 @@ const deleteJob = async (jobId) => {
 
 // 查詢按鈕
 const handleSearch = async () => {
+  // 驗證日期範圍
+  if (startDate.value && endDate.value) {
+    if (dayjs(startDate.value).isAfter(dayjs(endDate.value))) {
+      message.warning('開始日期不能晚於結束日期');
+      return;
+    }
+  }
+
   paginationConfig.value.current = 1; // 重置到第一頁
+  statusFilter.value = []; // 重置 status 篩選
   await fetchJobs();
 };
 
@@ -468,7 +517,6 @@ const handleRefresh = async () => {
 const handleTableChange = (pagination) => {
   paginationConfig.value.current = pagination.current;
   paginationConfig.value.pageSize = pagination.pageSize;
-  fetchJobs();
 };
 
 // 展開行

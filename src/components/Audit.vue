@@ -90,8 +90,8 @@ import dayjs from 'dayjs';
 import { api } from '../utils/api';
 
 const loading = ref(false);
-const startDate = ref(null);
-const endDate = ref(null);
+const startDate = ref(dayjs());
+const endDate = ref(dayjs());
 const actionFilter = ref('');
 const pageSize = ref(20);
 const currentPage = ref(1);

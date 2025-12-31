@@ -104,62 +104,122 @@ const pageSizeOptions = [
   { label: '200 筆/頁', value: 200 }
 ];
 
-const columns = [
+// 動態產生篩選選項的計算屬性
+const requestIdFilters = computed(() => {
+  const uniqueIds = [...new Set(auditData.value.map(item => item.requestId))];
+  return uniqueIds.filter(id => id !== '-').map(id => ({
+    text: id,
+    value: id
+  })).sort((a, b) => a.text.localeCompare(b.text));
+});
+
+const userIdFilters = computed(() => {
+  const uniqueIds = [...new Set(auditData.value.map(item => item.userId))];
+  return uniqueIds.filter(id => id !== '-').map(id => ({
+    text: id,
+    value: id
+  })).sort((a, b) => a.text.localeCompare(b.text));
+});
+
+const useTypeFilters = computed(() => {
+  const uniqueTypes = [...new Set(auditData.value.map(item => item.useType))];
+  return uniqueTypes.filter(type => type !== '-').map(type => ({
+    text: type,
+    value: type
+  })).sort((a, b) => a.text.localeCompare(b.text));
+});
+
+const actionFilters = computed(() => {
+  const uniqueActions = [...new Set(auditData.value.map(item => item.action))];
+  return uniqueActions.filter(action => action !== '-').map(action => ({
+    text: action,
+    value: action
+  })).sort((a, b) => a.text.localeCompare(b.text));
+});
+
+// 表格欄位定義 - 使用 computed 讓 filters 動態更新
+const columns = computed(() => [
   { 
     title: 'Log ID', 
     dataIndex: 'logId', 
     key: 'logId',
-    width: 100
+    width: 100,
+    sorter: (a, b) => a.logId.localeCompare(b.logId)
   },
   { 
     title: 'Request ID', 
     dataIndex: 'requestId', 
     key: 'requestId',
-    width: 120
+    width: 150,
+    sorter: (a, b) => a.requestId.localeCompare(b.requestId),
+    filters: requestIdFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.requestId === value
   },
   { 
     title: 'User ID', 
     dataIndex: 'userId', 
     key: 'userId',
-    width: 100
+    width: 120,
+    sorter: (a, b) => a.userId.localeCompare(b.userId),
+    filters: userIdFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.userId === value
   },
   { 
     title: 'Use Type', 
     dataIndex: 'useType', 
     key: 'useType',
-    width: 120
+    width: 120,
+    sorter: (a, b) => a.useType.localeCompare(b.useType),
+    filters: useTypeFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.useType === value
   },
   { 
     title: 'Action', 
     dataIndex: 'action', 
     key: 'action',
-    width: 150
+    width: 150,
+    sorter: (a, b) => a.action.localeCompare(b.action),
+    filters: actionFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.action === value
   },
   { 
     title: 'Outcome', 
     dataIndex: 'outcome', 
     key: 'outcome',
-    width: 120
+    width: 120,
+    sorter: (a, b) => a.outcome.localeCompare(b.outcome)
   },
   { 
     title: 'Result Code', 
     dataIndex: 'resultCode', 
     key: 'resultCode',
-    width: 120
+    width: 120,
+    sorter: (a, b) => a.resultCode.localeCompare(b.resultCode)
   },
   { 
     title: 'Detail', 
     dataIndex: 'detail', 
     key: 'detail',
-    width: 150
+    width: 200,
+    sorter: (a, b) => a.detail.localeCompare(b.detail)
   },
   { 
     title: 'Timestamp', 
     dataIndex: 'timestamp', 
     key: 'timestamp',
-    width: 200
+    width: 200,
+    sorter: (a, b) => {
+      // 時間排序
+      const dateA = dayjs(a.timestamp, 'YYYY-MM-DD HH:mm:ss');
+      const dateB = dayjs(b.timestamp, 'YYYY-MM-DD HH:mm:ss');
+      return dateA.valueOf() - dateB.valueOf();
+    }
   }
-];
+]);
 
 const auditData = ref([]);
 const allAuditData = ref([]); // 儲存完整的 API 資料
@@ -341,7 +401,8 @@ const handleSearch = () => {
 };
 
 // 處理表格變更（分頁、排序等）
-const handleTableChange = (pagination) => {
+const handleTableChange = (pagination, filters, sorter) => {
+  console.log('表格變更:', { pagination, filters, sorter });
   currentPage.value = pagination.current;
   fetchAuditLogs();
 };

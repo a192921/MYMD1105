@@ -57,11 +57,11 @@
       </template>
 
       <a-table
-        :columns="columns"
+        :columns="resizableColumns"
         :data-source="filteredAuditData"
         :pagination="paginationConfig"
         :loading="loading"
-        :scroll="{ y: 'calc(100vh - 380px)' }"
+        :scroll="{ y: 'calc(100vh - 380px)', x: 'max-content' }"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -83,7 +83,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, h, resolveComponent } from 'vue';
 import { CalendarOutlined } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import dayjs from 'dayjs';
@@ -103,6 +103,46 @@ const pageSizeOptions = [
   { label: '100 筆/頁', value: 100 },
   { label: '200 筆/頁', value: 200 }
 ];
+
+const auditData = ref([]);
+const allAuditData = ref([]); // 儲存完整的 API 資料
+
+// 過濾後的資料（根據 action 篩選）
+const filteredAuditData = computed(() => {
+  if (!actionFilter.value || !actionFilter.value.trim()) {
+    return auditData.value;
+  }
+  
+  const filterText = actionFilter.value.toLowerCase().trim();
+  return auditData.value.filter(item => 
+    item.action.toLowerCase().includes(filterText)
+  );
+});
+
+// 分頁配置
+const paginationConfig = computed(() => ({
+  current: currentPage.value,
+  pageSize: pageSize.value,
+  total: totalRecords.value,
+  showSizeChanger: false,
+  showTotal: (total) => `共 ${total} 筆記錄`,
+  showQuickJumper: true,
+}));
+
+// 格式化時間戳記
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) return '-';
+  
+  try {
+    const date = dayjs(timestamp);
+    if (date.isValid()) {
+      return date.format('YYYY-MM-DD HH:mm:ss');
+    }
+    return timestamp;
+  } catch (error) {
+    return timestamp;
+  }
+};
 
 // 動態產生篩選選項的計算屬性
 const requestIdFilters = computed(() => {
@@ -138,7 +178,7 @@ const actionFilters = computed(() => {
 });
 
 // 表格欄位定義 - 使用 computed 讓 filters 動態更新
-const columns = computed(() => [
+const resizableColumns = computed(() => [
   { 
     title: 'Log ID', 
     dataIndex: 'logId', 
@@ -213,7 +253,6 @@ const columns = computed(() => [
     key: 'timestamp',
     width: 200,
     sorter: (a, b) => {
-      // 時間排序
       const dateA = dayjs(a.timestamp, 'YYYY-MM-DD HH:mm:ss');
       const dateB = dayjs(b.timestamp, 'YYYY-MM-DD HH:mm:ss');
       return dateA.valueOf() - dateB.valueOf();
@@ -221,45 +260,93 @@ const columns = computed(() => [
   }
 ]);
 
-const auditData = ref([]);
-const allAuditData = ref([]); // 儲存完整的 API 資料
-
-// 過濾後的資料（根據 action 篩選）
-const filteredAuditData = computed(() => {
-  if (!actionFilter.value || !actionFilter.value.trim()) {
-    return auditData.value;
+// 可調整大小的表頭組件
+const ResizableTitle = (props) => {
+  const { width, onResize, ...restProps } = props;
+  
+  if (!width || !onResize) {
+    return h('th', restProps);
   }
   
-  const filterText = actionFilter.value.toLowerCase().trim();
-  return auditData.value.filter(item => 
-    item.action.toLowerCase().includes(filterText)
-  );
-});
-
-// 分頁配置
-const paginationConfig = computed(() => ({
-  current: currentPage.value,
-  pageSize: pageSize.value,
-  total: totalRecords.value,
-  showSizeChanger: false,
-  showTotal: (total) => `共 ${total} 筆記錄`,
-  showQuickJumper: true,
-}));
-
-// 格式化時間戳記
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return '-';
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const startX = e.clientX;
+    const startWidth = width;
+    
+    const handleMouseMove = (moveEvent) => {
+      const offset = moveEvent.clientX - startX;
+      const newWidth = Math.max(50, startWidth + offset);
+      onResize(newWidth);
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
   
-  try {
-    // 處理格式：20220102T22:48:30.8783871+08:00
-    // 轉換為：2022-01-02 22:48:30
-    const date = dayjs(timestamp);
-    if (date.isValid()) {
-      return date.format('YYYY-MM-DD HH:mm:ss');
+  // 確保正確處理 children
+  const children = restProps.children || [];
+  const childrenArray = Array.isArray(children) ? children : [children];
+  
+  return h('th', {
+    ...restProps,
+    style: {
+      ...restProps.style,
+      position: 'relative',
+      userSelect: 'none'
     }
-    return timestamp;
-  } catch (error) {
-    return timestamp;
+  }, [
+    ...childrenArray,
+    h('span', {
+      class: 'column-resizer',
+      onMousedown: handleMouseDown,
+      style: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: '10px',
+        cursor: 'col-resize',
+        userSelect: 'none',
+        touchAction: 'none'
+      }
+    })
+  ]);
+};
+
+// 自定義表頭組件
+const resizableComponents = {
+  header: {
+    cell: (props) => {
+      const columnKey = props.column?.key;
+      if (!columnKey) {
+        return h('th', props);
+      }
+      
+      const col = resizableColumns.value.find(c => c.key === columnKey);
+      
+      if (col?.resizable) {
+        return ResizableTitle({
+          ...props,
+          width: columnWidths.value[columnKey],
+          onResize: (newWidth) => {
+            columnWidths.value[columnKey] = newWidth;
+          }
+        });
+      }
+      
+      return h('th', props);
+    }
   }
 };
 
@@ -268,13 +355,11 @@ const fetchAuditLogs = async () => {
   loading.value = true;
   
   try {
-    // 構建 API 參數
     const params = {
       page: currentPage.value,
       size: pageSize.value
     };
 
-    // 添加日期參數
     if (startDate.value) {
       params.startDate = dayjs(startDate.value).format('YYYY-MM-DD');
     }
@@ -282,16 +367,13 @@ const fetchAuditLogs = async () => {
       params.endDate = dayjs(endDate.value).format('YYYY-MM-DD');
     }
 
-    // 使用 api 工具發送請求
     const response = await api.get('/api/audit-logs', { params });
 
     console.log('審計記錄 API 回應:', response.data);
 
-    // 根據實際 API 格式解析資料
     if (response.data && response.data.status && response.data.data) {
       const { useLogs = [], total = 0 } = response.data.data;
 
-      // 映射資料到表格格式
       auditData.value = useLogs.map((item, index) => ({
         key: item.logId || `${currentPage.value}-${index}`,
         logId: item.logId || '-',
@@ -316,7 +398,6 @@ const fetchAuditLogs = async () => {
     console.error('獲取審計記錄失敗:', error);
     message.error('獲取審計記錄失敗，請稍後再試');
     
-    // 使用假資料作為後備
     auditData.value = [
       { 
         key: '1', 
@@ -354,30 +435,6 @@ const fetchAuditLogs = async () => {
         detail: 'user login', 
         timestamp: '2022-01-04 09:15:42' 
       },
-      { 
-        key: '4', 
-        logId: '4', 
-        requestId: 'req-4', 
-        userId: '4', 
-        useType: 'run', 
-        action: 'run', 
-        outcome: 'success', 
-        resultCode: '200', 
-        detail: 'Run_01', 
-        timestamp: '2022-01-05 14:30:20' 
-      },
-      { 
-        key: '5', 
-        logId: '5', 
-        requestId: 'req-5', 
-        userId: '5', 
-        useType: 'delete', 
-        action: 'delete', 
-        outcome: 'success', 
-        resultCode: '200', 
-        detail: 'delete file', 
-        timestamp: '2022-01-06 16:45:33' 
-      }
     ];
     totalRecords.value = 100;
   } finally {
@@ -387,7 +444,6 @@ const fetchAuditLogs = async () => {
 
 // 處理查詢按鈕點擊
 const handleSearch = () => {
-  // 驗證日期範圍
   if (startDate.value && endDate.value) {
     if (dayjs(startDate.value).isAfter(dayjs(endDate.value))) {
       message.warning('開始日期不能晚於結束日期');
@@ -395,8 +451,8 @@ const handleSearch = () => {
     }
   }
 
-  currentPage.value = 1; // 重置到第一頁
-  actionFilter.value = ''; // 重置 action 篩選
+  currentPage.value = 1;
+  actionFilter.value = '';
   fetchAuditLogs();
 };
 
@@ -456,6 +512,25 @@ onMounted(() => {
 
 :deep(.ant-table-tbody > tr:hover) {
   background-color: #f3f4f6 !important;
+}
+
+/* 欄位調整大小的拖曳條 */
+.resizable-table :deep(.column-resizer) {
+  background: transparent;
+  z-index: 10;
+}
+
+.resizable-table :deep(.column-resizer:hover) {
+  background: rgba(24, 144, 255, 0.3);
+}
+
+.resizable-table :deep(th) {
+  overflow: visible !important;
+}
+
+/* 可調整大小的欄位邊界高亮 */
+:deep(.resize-handle:hover) {
+  background: rgba(24, 144, 255, 0.3) !important;
 }
 
 /* 自定義滾動條 */

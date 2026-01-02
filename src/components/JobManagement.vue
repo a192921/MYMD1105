@@ -290,13 +290,6 @@ const fetchJobs = async () => {
       pageSize: 1000,
     };
 
-    if (startDate.value) {
-      params.startDate = dayjs(startDate.value).format('YYYY-MM-DD');
-    }
-    if (endDate.value) {
-      params.endDate = dayjs(endDate.value).format('YYYY-MM-DD');
-    }
-
     const response = await api.get('/jobs', { params });
 
     console.log('Job 列表 API 回應:', response.data);
@@ -310,7 +303,8 @@ const fetchJobs = async () => {
       jobs = response.data;
     }
 
-    jobData.value = jobs.map(job => ({
+    // 映射資料
+    let mappedJobs = jobs.map(job => ({
       key: job.id?.toString() || job.jobId,
       jobId: job.jobId || job.id,
       customerId: job.customerId || job.userId,
@@ -322,9 +316,51 @@ const fetchJobs = async () => {
       jobFiles: [],
     }));
 
-    paginationConfig.value.total = jobData.value.length;
+    // 前端日期篩選（取得 API 資料後再進行篩選）
+    if (startDate.value || endDate.value) {
+      const startDateStr = startDate.value ? dayjs(startDate.value).format('YYYY-MM-DD') : null;
+      const endDateStr = endDate.value ? dayjs(endDate.value).format('YYYY-MM-DD') : null;
 
-    message.success('Job 列表載入成功');
+      mappedJobs = mappedJobs.filter(job => {
+        // timestamp 格式: 2026-01-04T14:30:10
+        const timestamp = job.timestamp;
+        
+        if (!timestamp) {
+          return false; // 沒有 timestamp 的資料不顯示
+        }
+
+        // 解析 ISO 8601 格式的日期
+        const jobDate = dayjs(timestamp);
+
+        // 檢查日期是否有效
+        if (!jobDate.isValid()) {
+          console.warn(`無效的時間戳記: ${timestamp}`);
+          return false;
+        }
+
+        // 取得日期部分（YYYY-MM-DD）
+        const jobDateOnly = jobDate.format('YYYY-MM-DD');
+
+        // 比較開始日期
+        if (startDateStr && jobDateOnly < startDateStr) {
+          return false;
+        }
+
+        // 比較結束日期
+        if (endDateStr && jobDateOnly > endDateStr) {
+          return false;
+        }
+
+        return true;
+      });
+
+      console.log(`日期篩選: ${startDateStr} ~ ${endDateStr}, 結果: ${mappedJobs.length} 筆`);
+    }
+
+    jobData.value = mappedJobs;
+    paginationConfig.value.total = mappedJobs.length;
+
+    message.success(`Job 列表載入成功（共 ${mappedJobs.length} 筆）`);
   } catch (error) {
     console.error('取得 Job 列表失敗:', error);
     message.error('載入 Job 列表失敗');
@@ -335,7 +371,7 @@ const fetchJobs = async () => {
         jobId: '00000110', 
         customerId: 'NVT00120', 
         status: 'Running', 
-        timestamp: '20220102 09:20:30',
+        timestamp: '2026-01-04T09:20:30',
         jobFiles: []
       },
       { 
@@ -343,7 +379,7 @@ const fetchJobs = async () => {
         jobId: '00000104', 
         customerId: 'NVT00134', 
         status: 'Done', 
-        timestamp: '20220102 09:20:30',
+        timestamp: '2026-01-03T09:20:30',
         jobFiles: []
       },
       { 
@@ -351,7 +387,7 @@ const fetchJobs = async () => {
         jobId: '00000105', 
         customerId: 'NVT00135', 
         status: 'Pending', 
-        timestamp: '20220103 11:15:20',
+        timestamp: '2026-01-02T11:15:20',
         jobFiles: []
       },
       { 
@@ -359,7 +395,7 @@ const fetchJobs = async () => {
         jobId: '00000106', 
         customerId: 'NVT00136', 
         status: 'Failed', 
-        timestamp: '20220104 14:30:10',
+        timestamp: '2026-01-01T14:30:10',
         jobFiles: []
       },
     ];

@@ -183,6 +183,11 @@ const resizableColumns = computed(() => [
     title: 'Log ID', 
     dataIndex: 'logId', 
     key: 'logId',
+    // 如果使用第三方库，可能需要添加 resizable: true
+    resizable: true,
+    // 如果是自定义，可能需要处理 minWidth
+    minWidth: 80,
+    maxWidth: 120,
     width: 100,
     sorter: (a, b) => a.logId.localeCompare(b.logId)
   },
@@ -560,3 +565,5 @@ onMounted(() => {
   }
 }
 </style>
+
+

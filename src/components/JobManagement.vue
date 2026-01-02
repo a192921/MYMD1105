@@ -29,17 +29,6 @@
             </template>
           </a-date-picker>
 
-          <!-- Status 篩選 - 即時過濾 -->
-          <a-select
-            v-model:value="statusFilter"
-            mode="multiple"
-            placeholder="Status= Pending/Running/ Done/Failed"
-            style="width: 280px"
-            :options="statusOptions"
-            :max-tag-count="2"
-            allow-clear
-          />
-
           <!-- 查詢按鈕 -->
           <a-button 
             type="primary" 
@@ -62,8 +51,8 @@
       </template>
 
       <a-table
-        :columns="columns"
-        :data-source="filteredJobData"
+        :columns="tableColumns"
+        :data-source="jobData"
         :pagination="paginationConfig"
         :loading="loading"
         :scroll="{ y: 'calc(100vh - 320px)' }"
@@ -153,16 +142,15 @@ import {
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import dayjs from 'dayjs';
-import { api } from '../utils/api'; // 引入 API 工具
+import { api } from '../utils/api';
 
 // ============================================
 // 狀態管理
 // ============================================
 const loading = ref(false);
-const loadingFiles = ref({}); // 用於追蹤個別 Job 的檔案載入狀態
+const loadingFiles = ref({});
 const startDate = ref(dayjs());
 const endDate = ref(dayjs());
-const statusFilter = ref([]);
 const expandedRowKeys = ref([]);
 const jobData = ref([]);
 
@@ -176,61 +164,77 @@ const paginationConfig = ref({
   pageSizeOptions: ['10', '20', '50', '100'],
 });
 
-const statusOptions = [
-  { label: 'Pending', value: 'Pending' },
-  { label: 'Running', value: 'Running' },
-  { label: 'Done', value: 'Done' },
-  { label: 'Failed', value: 'Failed' }
-];
+// ============================================
+// 動態產生篩選選項
+// ============================================
+const jobIdFilters = computed(() => {
+  const uniqueIds = [...new Set(jobData.value.map(item => item.jobId))];
+  return uniqueIds.map(id => ({
+    text: id,
+    value: id
+  })).sort((a, b) => a.text.localeCompare(b.text));
+});
 
-// ============================================
-// 計算屬性：即時篩選 Job 資料
-// ============================================
-const filteredJobData = computed(() => {
-  if (!statusFilter.value || statusFilter.value.length === 0) {
-    // 沒有選擇狀態篩選，返回所有資料
-    paginationConfig.value.total = jobData.value.length;
-    return jobData.value;
-  }
-  
-  // 根據選擇的狀態進行篩選
-  const filtered = jobData.value.filter(job => 
-    statusFilter.value.includes(job.status)
-  );
-  
-  // 更新分頁總數
-  paginationConfig.value.total = filtered.length;
-  
-  return filtered;
+const customerIdFilters = computed(() => {
+  const uniqueIds = [...new Set(jobData.value.map(item => item.customerId))];
+  return uniqueIds.map(id => ({
+    text: id,
+    value: id
+  })).sort((a, b) => a.text.localeCompare(b.text));
+});
+
+const statusFilters = computed(() => {
+  const uniqueStatuses = [...new Set(jobData.value.map(item => item.status))];
+  return uniqueStatuses.map(status => ({
+    text: status,
+    value: status
+  })).sort((a, b) => a.text.localeCompare(b.text));
 });
 
 // ============================================
-// 表格欄位設定
+// 表格欄位設定（含排序和篩選）
 // ============================================
-const columns = [
+const tableColumns = computed(() => [
   { 
     title: 'Job_id', 
     dataIndex: 'jobId', 
     key: 'jobId',
-    width: 120
+    width: 120,
+    sorter: (a, b) => a.jobId.localeCompare(b.jobId),
+    filters: jobIdFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.jobId === value
   },
   { 
     title: 'customer_ID', 
     dataIndex: 'customerId', 
     key: 'customerId',
-    width: 150
+    width: 150,
+    sorter: (a, b) => a.customerId.localeCompare(b.customerId),
+    filters: customerIdFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.customerId === value
   },
   { 
     title: 'Status', 
     dataIndex: 'status', 
     key: 'status',
-    width: 120
+    width: 120,
+    sorter: (a, b) => a.status.localeCompare(b.status),
+    filters: statusFilters.value,
+    filterSearch: true,
+    onFilter: (value, record) => record.status === value
   },
   { 
     title: 'timestamp', 
     dataIndex: 'timestamp', 
     key: 'timestamp',
-    width: 200
+    width: 200,
+    sorter: (a, b) => {
+      const dateA = dayjs(a.timestamp);
+      const dateB = dayjs(b.timestamp);
+      return dateA.valueOf() - dateB.valueOf();
+    }
   },
   { 
     title: '操作', 
@@ -238,7 +242,7 @@ const columns = [
     width: 250,
     fixed: 'right'
   }
-];
+]);
 
 const fileColumns = [
   { 
@@ -281,13 +285,11 @@ const fileColumns = [
 const fetchJobs = async () => {
   loading.value = true;
   try {
-    // 建立查詢參數
     const params = {
       page: 1,
-      pageSize: 1000, // 取得所有資料，在前端進行篩選
+      pageSize: 1000,
     };
 
-    // 加入日期篩選
     if (startDate.value) {
       params.startDate = dayjs(startDate.value).format('YYYY-MM-DD');
     }
@@ -299,7 +301,6 @@ const fetchJobs = async () => {
 
     console.log('Job 列表 API 回應:', response.data);
 
-    // 處理不同的回應格式
     let jobs = [];
     if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
       jobs = response.data.res.data;
@@ -318,15 +319,16 @@ const fetchJobs = async () => {
       featureId: job.featureId,
       createdAt: job.createdAt,
       completedAt: job.completedAt,
-      jobFiles: [], // 初始為空，展開時才載入
+      jobFiles: [],
     }));
+
+    paginationConfig.value.total = jobData.value.length;
 
     message.success('Job 列表載入成功');
   } catch (error) {
     console.error('取得 Job 列表失敗:', error);
     message.error('載入 Job 列表失敗');
 
-    // 使用假資料作為備用
     jobData.value = [
       { 
         key: '1', 
@@ -334,9 +336,6 @@ const fetchJobs = async () => {
         customerId: 'NVT00120', 
         status: 'Running', 
         timestamp: '20220102 09:20:30',
-        featureId: '',
-        createdAt: '20220102 09:20:30',
-        completedAt: null,
         jobFiles: []
       },
       { 
@@ -345,9 +344,6 @@ const fetchJobs = async () => {
         customerId: 'NVT00134', 
         status: 'Done', 
         timestamp: '20220102 09:20:30',
-        featureId: 'FT001',
-        createdAt: '20220102 09:20:30',
-        completedAt: '20220102 10:30:45',
         jobFiles: []
       },
       { 
@@ -356,9 +352,6 @@ const fetchJobs = async () => {
         customerId: 'NVT00135', 
         status: 'Pending', 
         timestamp: '20220103 11:15:20',
-        featureId: 'FT002',
-        createdAt: '20220103 11:15:20',
-        completedAt: null,
         jobFiles: []
       },
       { 
@@ -367,26 +360,21 @@ const fetchJobs = async () => {
         customerId: 'NVT00136', 
         status: 'Failed', 
         timestamp: '20220104 14:30:10',
-        featureId: 'FT003',
-        createdAt: '20220104 14:30:10',
-        completedAt: '20220104 14:45:30',
         jobFiles: []
       },
     ];
+    paginationConfig.value.total = jobData.value.length;
   } finally {
     loading.value = false;
   }
 };
 
-// 取得 Job 的檔案列表（當展開行時呼叫）
+// 取得 Job 的檔案列表
 const fetchJobFiles = async (jobId) => {
   loadingFiles.value[jobId] = true;
   try {
     const response = await api.get(`/jobs/${jobId}/files`);
 
-    console.log(`Job ${jobId} 檔案列表:`, response.data);
-
-    // 處理不同的回應格式
     let files = [];
     if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
       files = response.data.res.data;
@@ -405,7 +393,6 @@ const fetchJobFiles = async (jobId) => {
       uploadTime: file.uploadTime || file.createdAt,
     }));
 
-    // 更新對應 Job 的檔案列表
     const job = jobData.value.find(j => j.jobId === jobId);
     if (job) {
       job.jobFiles = mappedFiles;
@@ -416,7 +403,6 @@ const fetchJobFiles = async (jobId) => {
     console.error(`取得 Job ${jobId} 的檔案列表失敗:`, error);
     message.error('載入檔案列表失敗');
 
-    // 使用假資料
     const mockFiles = [
       { 
         key: 'f1', 
@@ -452,8 +438,6 @@ const retryJob = async (jobId) => {
   try {
     await api.post(`/jobs/${jobId}/retry`);
     message.success(`Job ${jobId} 重試成功`);
-    
-    // 重新載入列表
     await fetchJobs();
   } catch (error) {
     console.error('重試 Job 失敗:', error);
@@ -466,8 +450,6 @@ const cancelJob = async (jobId) => {
   try {
     await api.post(`/jobs/${jobId}/cancel`);
     message.success(`Job ${jobId} 已取消`);
-    
-    // 重新載入列表
     await fetchJobs();
   } catch (error) {
     console.error('取消 Job 失敗:', error);
@@ -480,8 +462,6 @@ const deleteJob = async (jobId) => {
   try {
     await api.delete(`/jobs/${jobId}`);
     message.success(`Job ${jobId} 已刪除`);
-    
-    // 重新載入列表
     await fetchJobs();
   } catch (error) {
     console.error('刪除 Job 失敗:', error);
@@ -493,9 +473,7 @@ const deleteJob = async (jobId) => {
 // 事件處理函數
 // ============================================
 
-// 查詢按鈕
 const handleSearch = async () => {
-  // 驗證日期範圍
   if (startDate.value && endDate.value) {
     if (dayjs(startDate.value).isAfter(dayjs(endDate.value))) {
       message.warning('開始日期不能晚於結束日期');
@@ -503,28 +481,24 @@ const handleSearch = async () => {
     }
   }
 
-  paginationConfig.value.current = 1; // 重置到第一頁
-  statusFilter.value = []; // 重置 status 篩選
+  paginationConfig.value.current = 1;
   await fetchJobs();
 };
 
-// 重新整理按鈕
 const handleRefresh = async () => {
   await fetchJobs();
 };
 
-// 表格分頁變更
-const handleTableChange = (pagination) => {
+const handleTableChange = (pagination, filters, sorter) => {
+  console.log('表格變更:', { pagination, filters, sorter });
   paginationConfig.value.current = pagination.current;
   paginationConfig.value.pageSize = pagination.pageSize;
 };
 
-// 展開行
 const handleExpand = async (expanded, record) => {
   if (expanded) {
     expandedRowKeys.value = [record.key];
     
-    // 如果檔案列表為空，則載入
     if (!record.jobFiles || record.jobFiles.length === 0) {
       await fetchJobFiles(record.jobId);
     }
@@ -533,7 +507,6 @@ const handleExpand = async (expanded, record) => {
   }
 };
 
-// Job 操作
 const handleJobRetry = (job) => {
   Modal.confirm({
     title: '確認重試',
@@ -598,7 +571,6 @@ const formatFileSize = (bytes) => {
 // ============================================
 
 onMounted(async () => {
-  // 頁面載入時取得資料
   await fetchJobs();
 });
 </script>
@@ -659,7 +631,6 @@ onMounted(async () => {
   margin: 0 4px;
 }
 
-/* 表格行可點擊提示 */
 :deep(.ant-table-tbody > tr) {
   cursor: pointer;
 }
@@ -668,14 +639,12 @@ onMounted(async () => {
   background-color: #e0f2fe !important;
 }
 
-/* 展開內容樣式 */
 .expanded-content {
   background: #f9fafb;
   padding: 24px;
   margin: 0;
 }
 
-/* JobFile 區塊 */
 .job-files-section {
   background: white;
   padding: 20px;
@@ -707,18 +676,15 @@ onMounted(async () => {
   background-color: #f0f9ff !important;
 }
 
-/* 表格斑馬紋 */
 :deep(.ant-table-tbody > tr:nth-child(even)) {
   background-color: #f9fafb;
 }
 
-/* 展開行的背景 */
 :deep(.ant-table-expanded-row > td) {
   padding: 0 !important;
   background: #ffffff !important;
 }
 
-/* 自定義滾動條 */
 :deep(.ant-table-body)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -738,7 +704,6 @@ onMounted(async () => {
   background: #94a3b8;
 }
 
-/* 響應式設計 */
 @media (max-width: 1200px) {
   .filter-container {
     flex-wrap: wrap;
@@ -746,5 +711,3 @@ onMounted(async () => {
   }
 }
 </style>
-
-

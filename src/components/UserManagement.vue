@@ -1,135 +1,841 @@
 <template>
-  <a-table
-    bordered
-    :columns="columns"
-    :data-source="data"
-    :scroll="{ x: 'max-content' }"
-  />
+  <div class="content-wrapper">
+    <h1 class="page-title">功能管理</h1>
+
+    <a-card class="table-card">
+      <template #extra>
+        <a-button 
+          type="primary" 
+          @click="openAddFeatureModal"
+          :loading="tableLoading"
+        >
+          <PlusOutlined /> 新增功能
+        </a-button>
+      </template>
+
+      <a-table
+        :columns="featureColumns"
+        :data-source="featureData"
+        :pagination="false"
+        :expandedRowKeys="expandedRowKeys"
+        @expand="handleExpand"
+        :loading="tableLoading"
+        :expandRowByClick="true"
+      >
+        <!-- 功能列表欄位 -->
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button 
+                type="primary" 
+                ghost 
+                size="small"
+                @click.stop="openEditFeatureModal(record)"
+              >
+                <EditOutlined /> 編輯
+              </a-button>
+              <a-button 
+                type="primary" 
+                ghost 
+                @click.stop="openUserModal(record)"
+                :loading="record.modalLoading"
+              >
+                授權使用者
+              </a-button>
+              <a-button 
+                type="primary" 
+                danger
+                ghost
+                size="small"
+                @click.stop="handleDeleteFeature(record)"
+              >
+                <DeleteOutlined /> 刪除
+              </a-button>
+            </a-space>
+          </template>
+        </template>
+
+        <!-- 展開：已授權使用者 -->
+        <template #expandedRowRender="{ record: feature }">
+          <div class="expanded-section">
+            <div class="expanded-header">
+              <h4 class="section-title">已授權使用者</h4>
+              
+              <!-- 搜尋輸入框 -->
+              <a-input
+                v-model:value="authorizedUserSearchText[feature.key]"
+                placeholder="搜尋使用者名稱或 Email"
+                style="width: 300px"
+                allow-clear
+              >
+                <template #prefix>
+                  <SearchOutlined style="color: #9ca3af" />
+                </template>
+              </a-input>
+            </div>
+            
+            <a-table
+              :columns="authorizedUserColumns"
+              :data-source="getFilteredUsers(feature)"
+              :loading="feature.usersLoading"
+              size="small"
+              :pagination="false"
+              class="authorized-users-table"
+            >
+              <template #bodyCell="{ column, record: user }">
+                <!-- Email 特殊樣式 -->
+                <template v-if="column.key === 'email'">
+                  <span style="color: #3b82f6">{{ user.email }}</span>
+                </template>
+                
+                <!-- 授權狀態：預設為已授權 -->
+                <template v-if="column.key === 'status'">
+                  <a-space>
+                    <a-switch
+                      checked
+                      size="small"
+                      :disabled="true"
+                    />
+                    <span style="color: #10b981; font-weight: 500;">已授權</span>
+                  </a-space>
+                </template>
+                
+                <!-- 收回授權按鈕 -->
+                <template v-if="column.key === 'action'">
+                  <a-button 
+                    type="default"
+                    size="small"
+                    @click="revokeUser(feature, user)"
+                    style="
+                      background: #f3f4f6;
+                      color: #6b7280;
+                      border: none;
+                      border-radius: 16px;
+                      padding: 4px 16px;
+                      font-weight: 500;
+                    "
+                  >
+                    移除
+                  </a-button>
+                </template>
+              </template>
+            </a-table>
+          </div>
+        </template>
+      </a-table>
+    </a-card>
+
+    <!-- 新增/編輯功能 Modal -->
+    <a-modal
+      v-model:open="featureModalVisible"
+      :title="isEditMode ? '編輯功能' : '新增功能'"
+      width="600px"
+      @ok="handleFeatureSubmit"
+      @cancel="handleFeatureModalCancel"
+      :confirmLoading="featureModalLoading"
+    >
+      <a-form
+        :model="featureForm"
+        :label-col="{ span: 6 }"
+        :wrapper-col="{ span: 18 }"
+        style="margin-top: 24px"
+      >
+        <a-form-item label="功能名稱" required>
+          <a-input 
+            v-model:value="featureForm.featureName" 
+            placeholder="請輸入功能名稱"
+          />
+        </a-form-item>
+        
+        <a-form-item label="描述">
+          <a-textarea 
+            v-model:value="featureForm.description" 
+            placeholder="請輸入功能描述"
+            :rows="4"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 授權使用者 Modal -->
+    <a-modal
+      v-model:open="userModalVisible"
+      title="授權使用者"
+      width="900px"
+      @cancel="handleModalCancel"
+      :footer="null"
+    >
+      <div class="modal-content">
+        <div class="modal-header-info">
+          <div>
+            <h3 class="modal-feature-name">功能：{{ currentFeature?.featureName }}</h3>
+            <p class="modal-feature-desc">選擇要授權的使用者</p>
+          </div>
+          <div class="modal-stats">
+            <a-tag color="green">
+              已授權：{{ currentFeature?.users?.length || 0 }} 位
+            </a-tag>
+            <a-tag color="blue">
+              未授權：{{ mappedUsers.length }} 位
+            </a-tag>
+          </div>
+        </div>
+        
+        <a-divider style="margin: 16px 0" />
+        
+        <!-- 如果沒有未授權使用者 -->
+        <a-empty 
+          v-if="mappedUsers.length === 0"
+          description="所有使用者都已授權"
+          :image="Empty.PRESENTED_IMAGE_SIMPLE"
+        >
+          <template #image>
+            <CheckCircleOutlined style="font-size: 48px; color: #10b981" />
+          </template>
+        </a-empty>
+        
+        <!-- 未授權使用者列表 -->
+        <div v-else>
+          <h4 class="modal-section-title">未授權使用者列表</h4>
+          
+          <a-table
+            :columns="unauthorizedUserColumns"
+            :data-source="mappedUsers"
+            :pagination="false"
+            :scroll="{ y: 400 }"
+            class="users-table"
+          >
+            <template #bodyCell="{ column, record: user }">
+              <!-- Customer ID -->
+              <template v-if="column.key === 'customerId'">
+                <span>{{ user.customerId }}</span>
+              </template>
+              
+              <!-- Email 特殊樣式 -->
+              <template v-if="column.key === 'email'">
+                <span style="color: #3b82f6">{{ user.email }}</span>
+              </template>
+              
+              <!-- 授權按鈕 -->
+              <template v-if="column.key === 'action'">
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="user.loading"
+                  @click="authorizeUser(user)"
+                >
+                  授權
+                </a-button>
+              </template>
+            </template>
+          </a-table>
+        </div>
+      </div>
+    </a-modal>
+  </div>
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { ref, computed, onMounted } from 'vue';
+import { message, Modal, Empty } from 'ant-design-vue';
+import { 
+  SearchOutlined, 
+  CheckCircleOutlined, 
+  PlusOutlined, 
+  EditOutlined,
+  DeleteOutlined 
+} from '@ant-design/icons-vue';
+import { api } from '../utils/api';
 
-const data = [
-  { key: 1, name: 'Queena', age: 25, job: 'Engineer' },
-  { key: 2, name: 'Amy', age: 30, job: 'Designer' },
-]
+/* ================= 狀態 ================= */
+const featureData = ref([]);
+const allUsers = ref([]);
+const expandedRowKeys = ref([]);
+const tableLoading = ref(false);
+const userModalVisible = ref(false);
+const currentFeature = ref(null);
+const authorizedUserSearchText = ref({}); // 儲存每個功能的搜尋文字
 
-/* ✅ 你指定的 function */
-const resizeColumn = (width, column) => {
-  column.width = Math.max(width, 80)
-}
+// 新增/編輯功能相關
+const featureModalVisible = ref(false);
+const featureModalLoading = ref(false);
+const isEditMode = ref(false);
+const featureForm = ref({
+  featureName: '',
+  description: ''
+});
 
-let startX = 0
-let startWidth = 0
-let activeColumn = null
+/* ================= 欄位定義 ================= */
+const featureColumns = [
+  { title: '功能名稱', dataIndex: 'featureName', key: 'featureName', width: 200 },
+  { title: '描述', dataIndex: 'description', key: 'description', width: 300 },
+  { title: '', key: 'action', width: 300, align: 'center' }
+];
 
-const onMouseMove = (e) => {
-  if (!activeColumn) return
-  resizeColumn(startWidth + e.clientX - startX, activeColumn)
-}
+const authorizedUserColumns = [
+  { title: 'Customer ID', dataIndex: 'customerId', key: 'customerId', width: 150 },
+  { title: 'Username', dataIndex: 'username', key: 'username', width: 150 },
+  { title: 'Email', dataIndex: 'email', key: 'email', width: 200 },
+  { title: '授權狀態', key: 'status', width: 150, align: 'center' },
+  { title: '', key: 'action', width: 100, align: 'center' }
+];
 
-const onMouseUp = () => {
-  activeColumn = null
-  document.removeEventListener('mousemove', onMouseMove)
-  document.removeEventListener('mouseup', onMouseUp)
-}
+const unauthorizedUserColumns = [
+  { title: 'Customer ID', dataIndex: 'customerId', key: 'customerId', width: 150 },
+  { title: 'Username', dataIndex: 'username', key: 'username', width: 150 },
+  { title: 'Email', dataIndex: 'email', key: 'email', width: 250 },
+  { title: '操作', key: 'action', width: 100, align: 'center' }
+];
 
-const columns = reactive([
-  {
-    title: 'Name',
-    dataIndex: 'name',
-    width: 150,
-    customHeaderCell: (column) => ({
-      style: {
-        width: column.width + 'px',
-        position: 'relative',
+/* ================= 計算屬性：合併授權狀態 ================= */
+const mappedUsers = computed(() => {
+  if (!currentFeature.value) return [];
+  
+  // 取得已授權使用者的 ID 列表
+  const authorizedIds = currentFeature.value.users.map(u => u.key);
+  
+  // 只返回未授權的使用者
+  return allUsers.value
+    .filter(u => !authorizedIds.includes(u.key)) // 過濾掉已授權的
+    .map(u => ({
+      ...u,
+      authorized: false,
+      loading: false
+    }));
+});
+
+// 過濾已授權使用者列表（根據搜尋文字）
+const getFilteredUsers = (feature) => {
+  const searchText = authorizedUserSearchText.value[feature.key];
+  
+  // 如果沒有搜尋文字，返回所有使用者
+  if (!searchText || searchText.trim() === '') {
+    return feature.users;
+  }
+  
+  // 將搜尋文字轉為小寫，進行不分大小寫的搜尋
+  const lowerSearchText = searchText.toLowerCase().trim();
+  
+  // 過濾使用者：根據 username、email 或 customerId
+  return feature.users.filter(user => {
+    const username = (user.username || '').toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    const customerId = (user.customerId || '').toLowerCase();
+    
+    return username.includes(lowerSearchText) || 
+           email.includes(lowerSearchText) || 
+           customerId.includes(lowerSearchText);
+  });
+};
+
+/* ================= API 呼叫函數 ================= */
+
+// 取得功能列表
+const fetchFeatures = async () => {
+  tableLoading.value = true;
+  try {
+    const response = await api.get('/api/admin/features');
+    
+    console.log('功能列表 API 回應:', response.data);
+    
+    // 處理不同的回應格式
+    let features = [];
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      features = response.data.res.data;
+    } else if (response.data && Array.isArray(response.data.data)) {
+      features = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      features = response.data;
+    }
+    
+    featureData.value = features.map(f => ({
+      key: f.id?.toString() || f.featureId?.toString(),
+      featureName: f.name || f.featureName,
+      description: f.description,
+      users: [], // 初始為空，展開時才載入
+      usersLoading: false,
+      modalLoading: false // 用於 Modal 打開時的載入狀態
+    }));
+    
+    message.success('功能列表載入成功');
+  } catch (error) {
+    console.error('載入功能列表失敗:', error);
+    
+    // 使用假資料
+    featureData.value = [
+      {
+        key: '1',
+        featureName: 'VESA 轉換',
+        description: 'VESA 相關功能',
+        users: [],
+        usersLoading: false,
+        modalLoading: false
       },
-      onMousedown: (e) => {
-        // 只在右側拖曳線才啟動
-        if (!e.target.classList.contains('resize-handle')) return
-        e.preventDefault()
+      {
+        key: '2',
+        featureName: '報表匯出',
+        description: 'CSV / Excel 匯出',
+        users: [],
+        usersLoading: false,
+        modalLoading: false
+      }
+    ];
+  } finally {
+    tableLoading.value = false;
+  }
+};
 
-        startX = e.clientX
-        startWidth = column.width
-        activeColumn = column
+// 取得功能的已授權使用者列表
+const fetchFeatureUsers = async (feature) => {
+  feature.usersLoading = true;
+  try {
+    // API: GET /api/admin/feature/{featureId}/customers
+    const response = await api.get(`/api/admin/feature/${feature.key}/customers`);
+    
+    console.log(`功能 ${feature.featureName} 的使用者:`, response.data);
+    
+    // 處理不同的回應格式
+    let users = [];
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      users = response.data.res.data;
+    } else if (response.data && Array.isArray(response.data.data)) {
+      users = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      users = response.data;
+    }
+    
+    // 映射使用者資料，預設授權狀態為 true（已授權）
+    feature.users = users.map(u => ({
+      key: u.userId || u.account || u.id?.toString(),
+      customerId: u.userId || u.account || u.customerId,
+      username: u.displayName || u.username || u.name,
+      email: u.email || u.mail,
+      authorized: true // 預設為已授權
+    }));
+    
+    console.log(`映射後的使用者列表:`, feature.users);
+  } catch (error) {
+    console.error('載入使用者列表失敗:', error);
+    
+    // 使用假資料
+    feature.users = feature.key === '1'
+      ? [
+          { key: 'Queena_Wu', customerId: 'Queena_Wu', username: 'Queena', email: 'queena@test.com', authorized: true },
+          { key: 'Eric_Lin', customerId: 'Eric_Lin', username: 'Eric', email: 'eric@test.com', authorized: true }
+        ]
+      : [
+          { key: 'Hailey_Chen', customerId: 'Hailey_Chen', username: 'Hailey', email: 'hailey@test.com', authorized: true }
+        ];
+  } finally {
+    feature.usersLoading = false;
+  }
+};
 
-        document.addEventListener('mousemove', onMouseMove)
-        document.addEventListener('mouseup', onMouseUp)
-      },
-    }),
-  },
-  {
-    title: 'Age',
-    dataIndex: 'age',
-    width: 100,
-    customHeaderCell: (column) => ({
-      style: {
-        width: column.width + 'px',
-        position: 'relative',
-      },
-      onMousedown: (e) => {
-        if (!e.target.classList.contains('resize-handle')) return
-        e.preventDefault()
+// 取得所有使用者列表
+const fetchAllUsers = async () => {
+  try {
+    const response = await api.get('/api/admin/users/all');
+    
+    console.log('所有使用者 API 回應:', response.data);
+    
+    // 處理不同的回應格式
+    let users = [];
+    if (response.data && response.data.res && Array.isArray(response.data.res.data)) {
+      users = response.data.res.data;
+    } else if (response.data && Array.isArray(response.data.data)) {
+      users = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      users = response.data;
+    }
+    
+    allUsers.value = users.map(u => ({
+      key: u.userId || u.account || u.id?.toString(),
+      customerId: u.userId || u.account || u.customerId,
+      username: u.displayName || u.username || u.name,
+      email: u.email || u.mail
+    }));
+  } catch (error) {
+    console.error('載入所有使用者失敗:', error);
+    
+    // 使用假資料
+    allUsers.value = [
+      { key: 'Queena_Wu', customerId: 'Queena_Wu', username: 'Queena', email: 'queena@test.com' },
+      { key: 'Eric_Lin', customerId: 'Eric_Lin', username: 'Eric', email: 'eric@test.com' },
+      { key: 'Hailey_Chen', customerId: 'Hailey_Chen', username: 'Hailey', email: 'hailey@test.com' },
+      { key: 'Angela_Wang', customerId: 'Angela_Wang', username: 'Angela', email: 'angela@test.com' }
+    ];
+  }
+};
 
-        startX = e.clientX
-        startWidth = column.width
-        activeColumn = column
+// 新增功能
+const addFeature = async (featureData) => {
+  try {
+    // API: POST /api/admin/features
+    await api.post('/api/admin/features', {
+      name: featureData.featureName,
+      description: featureData.description
+    });
+    
+    message.success('功能新增成功');
+    await fetchFeatures();
+  } catch (error) {
+    console.error('新增功能失敗:', error);
+    message.error('新增功能失敗');
+    throw error;
+  }
+};
 
-        document.addEventListener('mousemove', onMouseMove)
-        document.addEventListener('mouseup', onMouseUp)
-      },
-    }),
-  },
-  {
-    title: 'Job',
-    dataIndex: 'job',
-    width: 200,
-    customHeaderCell: (column) => ({
-      style: {
-        width: column.width + 'px',
-        position: 'relative',
-      },
-      onMousedown: (e) => {
-        if (!e.target.classList.contains('resize-handle')) return
-        e.preventDefault()
+// 編輯功能
+const editFeature = async (featureId, featureData) => {
+  try {
+    // API: PUT /api/admin/features/{featureId}
+    await api.put(`/api/admin/features/${featureId}`, {
+      name: featureData.featureName,
+      description: featureData.description
+    });
+    
+    message.success('功能更新成功');
+    await fetchFeatures();
+  } catch (error) {
+    console.error('更新功能失敗:', error);
+    message.error('更新功能失敗');
+    throw error;
+  }
+};
 
-        startX = e.clientX
-        startWidth = column.width
-        activeColumn = column
+// 刪除功能
+const deleteFeature = async (featureId) => {
+  try {
+    // API: DELETE /api/admin/features/{featureId}
+    await api.delete(`/api/admin/features/${featureId}`);
+    
+    message.success('功能刪除成功');
+    await fetchFeatures();
+  } catch (error) {
+    console.error('刪除功能失敗:', error);
+    message.error('刪除功能失敗');
+  }
+};
 
-        document.addEventListener('mousemove', onMouseMove)
-        document.addEventListener('mouseup', onMouseUp)
-      },
-    }),
-  },
-])
+/* ================= 事件處理 ================= */
+
+// 展開/收合功能行
+const handleExpand = async (expanded, feature) => {
+  if (expanded) {
+    expandedRowKeys.value = [feature.key];
+    
+    // 初始化該功能的搜尋文字（如果還沒有的話）
+    if (!authorizedUserSearchText.value[feature.key]) {
+      authorizedUserSearchText.value[feature.key] = '';
+    }
+    
+    // 展開時載入該功能的已授權使用者
+    await fetchFeatureUsers(feature);
+  } else {
+    expandedRowKeys.value = [];
+  }
+};
+
+// 打開新增功能 Modal
+const openAddFeatureModal = () => {
+  isEditMode.value = false;
+  featureForm.value = {
+    featureName: '',
+    description: ''
+  };
+  featureModalVisible.value = true;
+};
+
+// 打開編輯功能 Modal
+const openEditFeatureModal = (feature) => {
+  isEditMode.value = true;
+  featureForm.value = {
+    key: feature.key,
+    featureName: feature.featureName,
+    description: feature.description
+  };
+  featureModalVisible.value = true;
+};
+
+// 處理功能提交（新增或編輯）
+const handleFeatureSubmit = async () => {
+  // 驗證
+  if (!featureForm.value.featureName || !featureForm.value.featureName.trim()) {
+    message.warning('請輸入功能名稱');
+    return;
+  }
+  
+  featureModalLoading.value = true;
+  
+  try {
+    if (isEditMode.value) {
+      // 編輯模式
+      await editFeature(featureForm.value.key, featureForm.value);
+    } else {
+      // 新增模式
+      await addFeature(featureForm.value);
+    }
+    
+    featureModalVisible.value = false;
+  } catch (error) {
+    // 錯誤已在 API 函數中處理
+  } finally {
+    featureModalLoading.value = false;
+  }
+};
+
+// 關閉功能 Modal
+const handleFeatureModalCancel = () => {
+  featureModalVisible.value = false;
+  featureForm.value = {
+    featureName: '',
+    description: ''
+  };
+};
+
+// 刪除功能
+const handleDeleteFeature = (feature) => {
+  Modal.confirm({
+    title: '確認刪除',
+    content: `確定要刪除功能「${feature.featureName}」嗎？此操作無法復原。`,
+    okText: '確定刪除',
+    cancelText: '取消',
+    okType: 'danger',
+    onOk: async () => {
+      await deleteFeature(feature.key);
+    }
+  });
+};
+
+// 打開授權使用者 Modal
+const openUserModal = async (feature) => {
+  // 設置加載狀態
+  feature.modalLoading = true;
+  
+  try {
+    // 先載入該功能的已授權使用者列表
+    console.log('正在載入授權使用者列表...');
+    await fetchFeatureUsers(feature);
+    console.log('已載入授權使用者列表:', feature.users);
+    
+    // 設置當前功能
+    currentFeature.value = feature;
+    
+    // 載入成功後才打開 Modal
+    userModalVisible.value = true;
+  } catch (error) {
+    console.error('載入授權使用者列表失敗:', error);
+    message.error('載入授權使用者列表失敗，請重試');
+  } finally {
+    // 清除加載狀態
+    feature.modalLoading = false;
+  }
+};
+
+// 關閉授權 Modal
+const handleModalCancel = () => {
+  userModalVisible.value = false;
+  currentFeature.value = null;
+};
+
+// 授權使用者（在 Modal 中點擊授權按鈕）
+const authorizeUser = async (user) => {
+  const featureId = currentFeature.value.key;
+  
+  user.loading = true;
+  
+  try {
+    // API: POST /api/admin/features/{featureId}/customers
+    await api.post(`/api/admin/features/${featureId}/customers`, [
+      {
+        account: user.customerId,
+        mail: user.email
+      }
+    ]);
+    
+    message.success(`已授權 ${user.username}`);
+    
+    // 重新載入該功能的使用者列表
+    await fetchFeatureUsers(currentFeature.value);
+  } catch (error) {
+    console.error('授權失敗:', error);
+    message.error('授權失敗，請重試');
+  } finally {
+    user.loading = false;
+  }
+};
+
+// 收回授權（在展開列表中）
+const revokeUser = async (feature, user) => {
+  Modal.confirm({
+    title: '確認收回授權',
+    content: `確定要收回使用者「${user.username}」(${user.email}) 的授權嗎？`,
+    okText: '確定收回',
+    cancelText: '取消',
+    okType: 'danger',
+    onOk: async () => {
+      try {
+        // API: DELETE /api/admin/features/{featureId}/customers/{customerId}
+        await api.delete(`/api/admin/features/${feature.key}/customers/${user.customerId}`);
+        
+        message.success(`已收回 ${user.username} 的授權`);
+        
+        // 重新載入該功能的使用者列表
+        await fetchFeatureUsers(feature);
+      } catch (error) {
+        console.error('收回授權失敗:', error);
+        message.error('收回授權失敗，請重試');
+      }
+    }
+  });
+};
+
+/* ================= 生命週期 ================= */
+onMounted(() => {
+  fetchFeatures();
+  fetchAllUsers();
+});
 </script>
 
-<style>
-/* 🔑 拖曳線一定要真的存在 */
-.ant-table-thead th {
-  position: relative;
+<style scoped>
+.content-wrapper {
+  padding: 32px;
+  height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
 }
 
-.resize-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 10;
+.page-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #1f2937;
+  margin-bottom: 24px;
 }
 
-/* 用 pseudo-element 產生拖曳線 */
-.ant-table-thead th::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 6px;
+.table-card {
+  flex: 1;
+  overflow: hidden;
+}
+
+.table-card :deep(.ant-card-body) {
   height: 100%;
-  cursor: col-resize;
+  padding: 0;
+}
+
+/* 展開區域樣式 */
+.expanded-section {
+  background: #f9fafb;
+  padding: 24px;
+}
+
+.expanded-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.authorized-users-table {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.authorized-users-table :deep(.ant-table-thead > tr > th) {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+/* Modal 樣式 */
+.modal-content {
+  padding-top: 16px;
+}
+
+.modal-header-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-feature-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.modal-feature-desc {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
+.modal-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 12px;
+}
+
+.modal-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.users-table {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.users-table :deep(.ant-table-thead > tr > th) {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+/* 表格樣式 */
+:deep(.ant-table-tbody > tr) {
+  cursor: pointer;
+}
+
+:deep(.ant-table-tbody > tr:hover) {
+  background-color: #e0f2fe !important;
+}
+
+:deep(.ant-table-tbody > tr:nth-child(even)) {
+  background-color: #f9fafb;
+}
+
+:deep(.ant-table-expanded-row > td) {
+  padding: 0 !important;
+  background: #ffffff !important;
+}
+
+/* 自定義滾動條 */
+:deep(.ant-table-body)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+:deep(.ant-table-body)::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+:deep(.ant-table-body)::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+:deep(.ant-table-body)::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 </style>

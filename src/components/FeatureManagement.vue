@@ -3,6 +3,16 @@
     <h1 class="page-title">功能管理</h1>
 
     <a-card class="table-card">
+      <template #extra>
+        <a-button 
+          type="primary" 
+          @click="openAddFeatureModal"
+          :loading="tableLoading"
+        >
+          <PlusOutlined /> 新增功能
+        </a-button>
+      </template>
+
       <a-table
         :columns="featureColumns"
         :data-source="featureData"
@@ -15,14 +25,33 @@
         <!-- 功能列表欄位 -->
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
-            <a-button 
-              type="primary" 
-              ghost 
-              @click.stop="openUserModal(record)"
-              :loading="record.modalLoading"
-            >
-              授權使用者
-            </a-button>
+            <a-space>
+              <a-button 
+                type="primary" 
+                ghost 
+                size="small"
+                @click.stop="openEditFeatureModal(record)"
+              >
+                <EditOutlined /> 編輯
+              </a-button>
+              <a-button 
+                type="primary" 
+                ghost 
+                @click.stop="openUserModal(record)"
+                :loading="record.modalLoading"
+              >
+                授權使用者
+              </a-button>
+              <a-button 
+                type="primary" 
+                danger
+                ghost
+                size="small"
+                @click.stop="handleDeleteFeature(record)"
+              >
+                <DeleteOutlined /> 刪除
+              </a-button>
+            </a-space>
           </template>
         </template>
 
@@ -95,6 +124,38 @@
         </template>
       </a-table>
     </a-card>
+
+    <!-- 新增/編輯功能 Modal -->
+    <a-modal
+      v-model:open="featureModalVisible"
+      :title="isEditMode ? '編輯功能' : '新增功能'"
+      width="600px"
+      @ok="handleFeatureSubmit"
+      @cancel="handleFeatureModalCancel"
+      :confirmLoading="featureModalLoading"
+    >
+      <a-form
+        :model="featureForm"
+        :label-col="{ span: 6 }"
+        :wrapper-col="{ span: 18 }"
+        style="margin-top: 24px"
+      >
+        <a-form-item label="功能名稱" required>
+          <a-input 
+            v-model:value="featureForm.featureName" 
+            placeholder="請輸入功能名稱"
+          />
+        </a-form-item>
+        
+        <a-form-item label="描述">
+          <a-textarea 
+            v-model:value="featureForm.description" 
+            placeholder="請輸入功能描述"
+            :rows="4"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <!-- 授權使用者 Modal -->
     <a-modal
@@ -177,7 +238,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { message, Modal, Empty } from 'ant-design-vue';
-import { SearchOutlined, CheckCircleOutlined } from '@ant-design/icons-vue';
+import { 
+  SearchOutlined, 
+  CheckCircleOutlined, 
+  PlusOutlined, 
+  EditOutlined,
+  DeleteOutlined 
+} from '@ant-design/icons-vue';
 import { api } from '../utils/api';
 
 /* ================= 狀態 ================= */
@@ -189,11 +256,20 @@ const userModalVisible = ref(false);
 const currentFeature = ref(null);
 const authorizedUserSearchText = ref({}); // 儲存每個功能的搜尋文字
 
+// 新增/編輯功能相關
+const featureModalVisible = ref(false);
+const featureModalLoading = ref(false);
+const isEditMode = ref(false);
+const featureForm = ref({
+  featureName: '',
+  description: ''
+});
+
 /* ================= 欄位定義 ================= */
 const featureColumns = [
   { title: '功能名稱', dataIndex: 'featureName', key: 'featureName', width: 200 },
   { title: '描述', dataIndex: 'description', key: 'description', width: 300 },
-  { title: '', key: 'action', width: 150, align: 'center' }
+  { title: '', key: 'action', width: 300, align: 'center' }
 ];
 
 const authorizedUserColumns = [
@@ -202,13 +278,6 @@ const authorizedUserColumns = [
   { title: 'Email', dataIndex: 'email', key: 'email', width: 200 },
   { title: '授權狀態', key: 'status', width: 150, align: 'center' },
   { title: '', key: 'action', width: 100, align: 'center' }
-];
-
-const allUserColumns = [
-  { title: 'Customer ID', dataIndex: 'customerId', key: 'customerId', width: 150 },
-  { title: 'Username', dataIndex: 'username', key: 'username', width: 150 },
-  { title: 'Email', dataIndex: 'email', key: 'email', width: 200 },
-  { title: '授權狀態', key: 'status', width: 150, align: 'center' }
 ];
 
 const unauthorizedUserColumns = [
@@ -398,6 +467,56 @@ const fetchAllUsers = async () => {
   }
 };
 
+// 新增功能
+const addFeature = async (featureData) => {
+  try {
+    // API: POST /api/admin/features
+    await api.post('/api/admin/features', {
+      name: featureData.featureName,
+      description: featureData.description
+    });
+    
+    message.success('功能新增成功');
+    await fetchFeatures();
+  } catch (error) {
+    console.error('新增功能失敗:', error);
+    message.error('新增功能失敗');
+    throw error;
+  }
+};
+
+// 編輯功能
+const editFeature = async (featureId, featureData) => {
+  try {
+    // API: PUT /api/admin/features/{featureId}
+    await api.put(`/api/admin/features/${featureId}`, {
+      name: featureData.featureName,
+      description: featureData.description
+    });
+    
+    message.success('功能更新成功');
+    await fetchFeatures();
+  } catch (error) {
+    console.error('更新功能失敗:', error);
+    message.error('更新功能失敗');
+    throw error;
+  }
+};
+
+// 刪除功能
+const deleteFeature = async (featureId) => {
+  try {
+    // API: DELETE /api/admin/features/{featureId}
+    await api.delete(`/api/admin/features/${featureId}`);
+    
+    message.success('功能刪除成功');
+    await fetchFeatures();
+  } catch (error) {
+    console.error('刪除功能失敗:', error);
+    message.error('刪除功能失敗');
+  }
+};
+
 /* ================= 事件處理 ================= */
 
 // 展開/收合功能行
@@ -415,6 +534,77 @@ const handleExpand = async (expanded, feature) => {
   } else {
     expandedRowKeys.value = [];
   }
+};
+
+// 打開新增功能 Modal
+const openAddFeatureModal = () => {
+  isEditMode.value = false;
+  featureForm.value = {
+    featureName: '',
+    description: ''
+  };
+  featureModalVisible.value = true;
+};
+
+// 打開編輯功能 Modal
+const openEditFeatureModal = (feature) => {
+  isEditMode.value = true;
+  featureForm.value = {
+    key: feature.key,
+    featureName: feature.featureName,
+    description: feature.description
+  };
+  featureModalVisible.value = true;
+};
+
+// 處理功能提交（新增或編輯）
+const handleFeatureSubmit = async () => {
+  // 驗證
+  if (!featureForm.value.featureName || !featureForm.value.featureName.trim()) {
+    message.warning('請輸入功能名稱');
+    return;
+  }
+  
+  featureModalLoading.value = true;
+  
+  try {
+    if (isEditMode.value) {
+      // 編輯模式
+      await editFeature(featureForm.value.key, featureForm.value);
+    } else {
+      // 新增模式
+      await addFeature(featureForm.value);
+    }
+    
+    featureModalVisible.value = false;
+  } catch (error) {
+    // 錯誤已在 API 函數中處理
+  } finally {
+    featureModalLoading.value = false;
+  }
+};
+
+// 關閉功能 Modal
+const handleFeatureModalCancel = () => {
+  featureModalVisible.value = false;
+  featureForm.value = {
+    featureName: '',
+    description: ''
+  };
+};
+
+// 刪除功能
+const handleDeleteFeature = (feature) => {
+  Modal.confirm({
+    title: '確認刪除',
+    content: `確定要刪除功能「${feature.featureName}」嗎？此操作無法復原。`,
+    okText: '確定刪除',
+    cancelText: '取消',
+    okType: 'danger',
+    onOk: async () => {
+      await deleteFeature(feature.key);
+    }
+  });
 };
 
 // 打開授權使用者 Modal
@@ -442,45 +632,10 @@ const openUserModal = async (feature) => {
   }
 };
 
-// 關閉 Modal
+// 關閉授權 Modal
 const handleModalCancel = () => {
   userModalVisible.value = false;
   currentFeature.value = null;
-};
-
-// 切換授權狀態（在 Modal 中）
-const toggleAuthorize = async (checked, user) => {
-  const featureId = currentFeature.value.key;
-  const customerId = user.customerId;
-  
-  user.loading = true;
-  
-  try {
-    if (checked) {
-      // 授權使用者
-      // API: POST /api/admin/features/{featureId}/customers
-      await api.post(`/api/admin/features/${featureId}/customers`, [
-        {
-          account: user.customerId,
-          mail: user.email
-        }
-      ]);
-      message.success(`已授權 ${user.username}`);
-    } else {
-      // 取消授權
-      // API: DELETE /api/admin/features/{featureId}/customers/{customerId}
-      await api.delete(`/api/admin/features/${featureId}/customers/${customerId}`);
-      message.success(`已取消授權 ${user.username}`);
-    }
-    
-    // 重新載入該功能的使用者列表
-    await fetchFeatureUsers(currentFeature.value);
-  } catch (error) {
-    console.error('更新授權失敗:', error);
-    message.error('更新授權失敗，請重試');
-  } finally {
-    user.loading = false;
-  }
 };
 
 // 授權使用者（在 Modal 中點擊授權按鈕）
@@ -617,11 +772,22 @@ onMounted(() => {
   margin: 0;
 }
 
+.modal-feature-desc {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
 .modal-section-title {
   font-size: 14px;
   font-weight: 600;
   color: #4b5563;
   margin-bottom: 12px;
+}
+
+.modal-stats {
+  display: flex;
+  gap: 8px;
 }
 
 .users-table {
@@ -653,7 +819,7 @@ onMounted(() => {
   background: #ffffff !important;
 }
 
-/* 滾動條樣式 */
+/* 自定義滾動條 */
 :deep(.ant-table-body)::-webkit-scrollbar {
   width: 8px;
   height: 8px;

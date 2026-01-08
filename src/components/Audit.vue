@@ -189,7 +189,9 @@ const resizableColumns = computed(() => [
     minWidth: 80,
     maxWidth: 120,
     width: 100,
-    sorter: (a, b) => a.logId.localeCompare(b.logId)
+    sorter: (a, b) => String(a.logId || '').localeCompare(String(b.logId || ''))
+   
+
   },
   { 
     title: 'Request ID', 

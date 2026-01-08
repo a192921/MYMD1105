@@ -196,7 +196,21 @@
         
         <!-- 未授權使用者列表 -->
         <div v-else>
-          <h4 class="modal-section-title">未授權使用者列表</h4>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h4 class="modal-section-title" style="margin-bottom: 0;">未授權使用者列表</h4>
+            
+            <!-- 搜尋輸入框 -->
+            <a-input
+              v-model:value="unauthorizedUserSearchText"
+              placeholder="搜尋使用者名稱、Email 或 ID"
+              style="width: 300px"
+              allow-clear
+            >
+              <template #prefix>
+                <SearchOutlined style="color: #9ca3af" />
+              </template>
+            </a-input>
+          </div>
           
           <a-table
             :columns="unauthorizedUserColumns"
@@ -265,6 +279,9 @@ const featureForm = ref({
   description: ''
 });
 
+// 未授權使用者搜尋
+const unauthorizedUserSearchText = ref('');
+
 /* ================= 欄位定義 ================= */
 const featureColumns = [
   { title: '功能名稱', dataIndex: 'featureName', key: 'featureName', width: 200 },
@@ -295,13 +312,30 @@ const mappedUsers = computed(() => {
   const authorizedIds = currentFeature.value.users.map(u => u.key);
   
   // 只返回未授權的使用者
-  return allUsers.value
+  let unauthorizedUsers = allUsers.value
     .filter(u => !authorizedIds.includes(u.key)) // 過濾掉已授權的
     .map(u => ({
       ...u,
       authorized: false,
       loading: false
     }));
+  
+  // 根據搜尋文字篩選
+  if (unauthorizedUserSearchText.value && unauthorizedUserSearchText.value.trim()) {
+    const searchText = unauthorizedUserSearchText.value.toLowerCase().trim();
+    
+    unauthorizedUsers = unauthorizedUsers.filter(user => {
+      const username = (user.username || '').toLowerCase();
+      const email = (user.email || '').toLowerCase();
+      const customerId = (user.customerId || '').toLowerCase();
+      
+      return username.includes(searchText) || 
+             email.includes(searchText) || 
+             customerId.includes(searchText);
+    });
+  }
+  
+  return unauthorizedUsers;
 });
 
 // 過濾已授權使用者列表（根據搜尋文字）
@@ -621,6 +655,9 @@ const openUserModal = async (feature) => {
     // 設置當前功能
     currentFeature.value = feature;
     
+    // 清空搜尋文字
+    unauthorizedUserSearchText.value = '';
+    
     // 載入成功後才打開 Modal
     userModalVisible.value = true;
   } catch (error) {
@@ -636,6 +673,7 @@ const openUserModal = async (feature) => {
 const handleModalCancel = () => {
   userModalVisible.value = false;
   currentFeature.value = null;
+  unauthorizedUserSearchText.value = ''; // 清空搜尋文字
 };
 
 // 授權使用者（在 Modal 中點擊授權按鈕）

@@ -83,12 +83,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h, resolveComponent } from 'vue';
+import { ref, computed, onMounted, reactive } from 'vue';
 import { CalendarOutlined } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import dayjs from 'dayjs';
 import { api } from '../utils/api';
 
+// ============================================
+// 狀態管理
+// ============================================
 const loading = ref(false);
 const startDate = ref(dayjs());
 const endDate = ref(dayjs());
@@ -105,7 +108,10 @@ const pageSizeOptions = [
 ];
 
 const auditData = ref([]);
-const allAuditData = ref([]); // 儲存完整的 API 資料
+
+// ============================================
+// 計算屬性
+// ============================================
 
 // 過濾後的資料（根據 action 篩選）
 const filteredAuditData = computed(() => {
@@ -129,22 +135,7 @@ const paginationConfig = computed(() => ({
   showQuickJumper: true,
 }));
 
-// 格式化時間戳記
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return '-';
-  
-  try {
-    const date = dayjs(timestamp);
-    if (date.isValid()) {
-      return date.format('YYYY-MM-DD HH:mm:ss');
-    }
-    return timestamp;
-  } catch (error) {
-    return timestamp;
-  }
-};
-
-// 動態產生篩選選項的計算屬性
+// 動態產生篩選選項
 const requestIdFilters = computed(() => {
   const uniqueIds = [...new Set(auditData.value.map(item => item.requestId))];
   return uniqueIds.filter(id => id !== '-').map(id => ({
@@ -177,82 +168,221 @@ const actionFilters = computed(() => {
   })).sort((a, b) => a.text.localeCompare(b.text));
 });
 
-// 表格欄位定義 - 使用 computed 讓 filters 動態更新
-const resizableColumns = computed(() => [
+// ============================================
+// 欄位寬度調整功能
+// ============================================
+
+const resizeColumn = (width, column) => {
+  column.width = Math.max(width, 80); // 最小寬度 80px
+};
+
+let startX = 0;
+let startWidth = 0;
+let activeColumn = null;
+
+const onMouseMove = (e) => {
+  if (!activeColumn) return;
+  resizeColumn(startWidth + e.clientX - startX, activeColumn);
+};
+
+const onMouseUp = () => {
+  activeColumn = null;
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('mouseup', onMouseUp);
+};
+
+// ============================================
+// 表格欄位定義
+// ============================================
+
+const resizableColumns = reactive([
   { 
     title: 'Log ID', 
     dataIndex: 'logId', 
     key: 'logId',
-    // 如果使用第三方库，可能需要添加 resizable: true
-    resizable: true,
-    // 如果是自定义，可能需要处理 minWidth
-    minWidth: 80,
-    maxWidth: 120,
     width: 100,
-    sorter: (a, b) => String(a.logId || '').localeCompare(String(b.logId || ''))
-   
-
+    sorter: (a, b) => String(a.logId || '').localeCompare(String(b.logId || '')),
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Request ID', 
     dataIndex: 'requestId', 
     key: 'requestId',
     width: 150,
-    sorter: (a, b) => a.requestId.localeCompare(b.requestId),
+    sorter: (a, b) => String(a.requestId || '').localeCompare(String(b.requestId || '')),
     filters: requestIdFilters.value,
     filterSearch: true,
-    onFilter: (value, record) => record.requestId === value
+    onFilter: (value, record) => record.requestId === value,
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'User ID', 
     dataIndex: 'userId', 
     key: 'userId',
     width: 120,
-    sorter: (a, b) => a.userId.localeCompare(b.userId),
+    sorter: (a, b) => String(a.userId || '').localeCompare(String(b.userId || '')),
     filters: userIdFilters.value,
     filterSearch: true,
-    onFilter: (value, record) => record.userId === value
+    onFilter: (value, record) => record.userId === value,
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Use Type', 
     dataIndex: 'useType', 
     key: 'useType',
     width: 120,
-    sorter: (a, b) => a.useType.localeCompare(b.useType),
+    sorter: (a, b) => String(a.useType || '').localeCompare(String(b.useType || '')),
     filters: useTypeFilters.value,
     filterSearch: true,
-    onFilter: (value, record) => record.useType === value
+    onFilter: (value, record) => record.useType === value,
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Action', 
     dataIndex: 'action', 
     key: 'action',
     width: 150,
-    sorter: (a, b) => a.action.localeCompare(b.action),
+    sorter: (a, b) => String(a.action || '').localeCompare(String(b.action || '')),
     filters: actionFilters.value,
     filterSearch: true,
-    onFilter: (value, record) => record.action === value
+    onFilter: (value, record) => record.action === value,
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Outcome', 
     dataIndex: 'outcome', 
     key: 'outcome',
     width: 120,
-    sorter: (a, b) => a.outcome.localeCompare(b.outcome)
+    sorter: (a, b) => String(a.outcome || '').localeCompare(String(b.outcome || '')),
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Result Code', 
     dataIndex: 'resultCode', 
     key: 'resultCode',
     width: 120,
-    sorter: (a, b) => a.resultCode.localeCompare(b.resultCode)
+    sorter: (a, b) => String(a.resultCode || '').localeCompare(String(b.resultCode || '')),
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Detail', 
     dataIndex: 'detail', 
     key: 'detail',
     width: 200,
-    sorter: (a, b) => a.detail.localeCompare(b.detail)
+    sorter: (a, b) => String(a.detail || '').localeCompare(String(b.detail || '')),
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   },
   { 
     title: 'Timestamp', 
@@ -263,101 +393,54 @@ const resizableColumns = computed(() => [
       const dateA = dayjs(a.timestamp, 'YYYY-MM-DD HH:mm:ss');
       const dateB = dayjs(b.timestamp, 'YYYY-MM-DD HH:mm:ss');
       return dateA.valueOf() - dateB.valueOf();
-    }
+    },
+    customHeaderCell: (column) => ({
+      style: {
+        width: column.width + 'px',
+        position: 'relative',
+      },
+      onMousedown: (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = column.width;
+        activeColumn = column;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      },
+    }),
   }
 ]);
 
-// 可調整大小的表頭組件
-const ResizableTitle = (props) => {
-  const { width, onResize, ...restProps } = props;
-  
-  if (!width || !onResize) {
-    return h('th', restProps);
-  }
-  
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const startX = e.clientX;
-    const startWidth = width;
-    
-    const handleMouseMove = (moveEvent) => {
-      const offset = moveEvent.clientX - startX;
-      const newWidth = Math.max(50, startWidth + offset);
-      onResize(newWidth);
-    };
-    
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-  
-  // 確保正確處理 children
-  const children = restProps.children || [];
-  const childrenArray = Array.isArray(children) ? children : [children];
-  
-  return h('th', {
-    ...restProps,
-    style: {
-      ...restProps.style,
-      position: 'relative',
-      userSelect: 'none'
-    }
-  }, [
-    ...childrenArray,
-    h('span', {
-      class: 'column-resizer',
-      onMousedown: handleMouseDown,
-      style: {
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: '10px',
-        cursor: 'col-resize',
-        userSelect: 'none',
-        touchAction: 'none'
-      }
-    })
-  ]);
-};
+// ============================================
+// 工具函數
+// ============================================
 
-// 自定義表頭組件
-const resizableComponents = {
-  header: {
-    cell: (props) => {
-      const columnKey = props.column?.key;
-      if (!columnKey) {
-        return h('th', props);
-      }
-      
-      const col = resizableColumns.value.find(c => c.key === columnKey);
-      
-      if (col?.resizable) {
-        return ResizableTitle({
-          ...props,
-          width: columnWidths.value[columnKey],
-          onResize: (newWidth) => {
-            columnWidths.value[columnKey] = newWidth;
-          }
-        });
-      }
-      
-      return h('th', props);
+// 格式化時間戳記
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) return '-';
+  
+  try {
+    const date = dayjs(timestamp);
+    if (date.isValid()) {
+      return date.format('YYYY-MM-DD HH:mm:ss');
     }
+    return timestamp;
+  } catch (error) {
+    return timestamp;
   }
 };
 
-// API 請求函數
+// 判斷是否為連結
+const isLink = (detail) => {
+  if (!detail || detail === '-') return false;
+  return detail.includes('Upload_image') || detail.includes('upload');
+};
+
+// ============================================
+// API 呼叫函數
+// ============================================
+
 const fetchAuditLogs = async () => {
   loading.value = true;
   
@@ -383,14 +466,14 @@ const fetchAuditLogs = async () => {
 
       auditData.value = useLogs.map((item, index) => ({
         key: item.logId || `${currentPage.value}-${index}`,
-        logId: item.logId || '-',
-        requestId: item.requestId || '-',
-        userId: item.userId || '-',
-        useType: item.useType || '-',
-        action: item.action || '-',
-        outcome: item.outcome || '-',
-        resultCode: item.resultCode || '-',
-        detail: item.detail || '-',
+        logId: String(item.logId || '-'),
+        requestId: String(item.requestId || '-'),
+        userId: String(item.userId || '-'),
+        useType: String(item.useType || '-'),
+        action: String(item.action || '-'),
+        outcome: String(item.outcome || '-'),
+        resultCode: String(item.resultCode || '-'),
+        detail: String(item.detail || '-'),
         timestamp: formatTimestamp(item.timestamp)
       }));
 
@@ -405,6 +488,7 @@ const fetchAuditLogs = async () => {
     console.error('獲取審計記錄失敗:', error);
     message.error('獲取審計記錄失敗，請稍後再試');
     
+    // 使用假資料
     auditData.value = [
       { 
         key: '1', 
@@ -449,6 +533,10 @@ const fetchAuditLogs = async () => {
   }
 };
 
+// ============================================
+// 事件處理函數
+// ============================================
+
 // 處理查詢按鈕點擊
 const handleSearch = () => {
   if (startDate.value && endDate.value) {
@@ -463,20 +551,17 @@ const handleSearch = () => {
   fetchAuditLogs();
 };
 
-// 處理表格變更（分頁、排序等）
+// 處理表格變更（分頁、排序、篩選）
 const handleTableChange = (pagination, filters, sorter) => {
   console.log('表格變更:', { pagination, filters, sorter });
   currentPage.value = pagination.current;
   fetchAuditLogs();
 };
 
-// 判斷是否為連結
-const isLink = (detail) => {
-  if (!detail || detail === '-') return false;
-  return detail.includes('Upload_image') || detail.includes('upload');
-};
+// ============================================
+// 生命週期
+// ============================================
 
-// 初始載入資料
 onMounted(() => {
   fetchAuditLogs();
 });
@@ -504,6 +589,26 @@ onMounted(() => {
   align-items: center;
 }
 
+/* 拖曳線樣式 */
+.ant-table-thead th {
+  position: relative;
+}
+
+.ant-table-thead th::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.ant-table-thead th::after:hover {
+  background: rgba(24, 144, 255, 0.3);
+}
+
 /* 讓 detail 欄位中的連結顯示為紅色底線 */
 .detail-link {
   color: #ef4444;
@@ -519,25 +624,6 @@ onMounted(() => {
 
 :deep(.ant-table-tbody > tr:hover) {
   background-color: #f3f4f6 !important;
-}
-
-/* 欄位調整大小的拖曳條 */
-.resizable-table :deep(.column-resizer) {
-  background: transparent;
-  z-index: 10;
-}
-
-.resizable-table :deep(.column-resizer:hover) {
-  background: rgba(24, 144, 255, 0.3);
-}
-
-.resizable-table :deep(th) {
-  overflow: visible !important;
-}
-
-/* 可調整大小的欄位邊界高亮 */
-:deep(.resize-handle:hover) {
-  background: rgba(24, 144, 255, 0.3) !important;
 }
 
 /* 自定義滾動條 */
@@ -567,5 +653,3 @@ onMounted(() => {
   }
 }
 </style>
-
-

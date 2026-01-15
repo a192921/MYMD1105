@@ -47,17 +47,17 @@
       <!-- 右上角使用者帳戶按鈕 -->
       <div class="floating-user-button">
         <a-dropdown placement="bottomRight" :trigger="['click']">
-          <a-button class="user-button" size="large">
-            <UserOutlined />
-            <span class="username">{{ username }}</span>
+          <a-button class="user-button" size="large" :loading="loadingUserInfo">
+            <UserOutlined v-if="!loadingUserInfo" />
+            <span class="username">{{ username || '載入中...' }}</span>
             <DownOutlined style="margin-left: 4px; font-size: 12px" />
           </a-button>
           <template #overlay>
             <a-menu class="user-menu" @click="handleUserMenuClick">
               <a-menu-item key="profile" disabled>
                 <div class="user-info">
-                  <div class="user-name">{{ username }}</div>
-                  <div class="user-email">{{ userEmail }}</div>
+                  <div class="user-name">{{ username || '使用者' }}</div>
+                  <div class="user-email">{{ userEmail || '載入中...' }}</div>
                 </div>
               </a-menu-item>
               <a-menu-divider />
@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, computed, markRaw } from 'vue';
+import { ref, computed, markRaw, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -86,8 +86,8 @@ import {
   LogoutOutlined,
   UserOutlined,
   DownOutlined,
-  SettingOutlined
 } from '@ant-design/icons-vue';
+import { api } from '../utils/api';
 import Overview from '../components/Overview.vue';
 import UserManagement from '../components/UserManagement.vue';
 import FeatureManagement from '../components/FeatureManagement.vue';
@@ -97,9 +97,10 @@ import Audit from '../components/Audit.vue';
 const router = useRouter();
 const selectedKeys = ref(['overview']);
 
-// 使用者資訊（假資料）
-const username = ref('王小明');
-const userEmail = ref('wang.xiaoming@company.com');
+// 使用者資訊
+const username = ref('');
+const userEmail = ref('');
+const loadingUserInfo = ref(false);
 
 const components = {
   overview: markRaw(Overview),
@@ -115,15 +116,66 @@ const handleMenuClick = ({ key }) => {
   selectedKeys.value = [key];
 };
 
+// 取得使用者資訊
+const fetchUserInfo = async () => {
+  loadingUserInfo.value = true;
+  
+  try {
+    // API: GET /api/user/profile 或 /api/user/me
+    const response = await api.get('/api/user/profile');
+    
+    console.log('使用者資訊 API 回應:', response.data);
+    
+    // 處理不同的 API 回應格式
+    let userData = null;
+    
+    if (response.data && response.data.res && response.data.res.data) {
+      userData = response.data.res.data;
+    } else if (response.data && response.data.data) {
+      userData = response.data.data;
+    } else if (response.data) {
+      userData = response.data;
+    }
+    
+    if (userData) {
+      // 根據實際 API 欄位名稱調整
+      username.value = userData.displayName || userData.username || userData.name || '使用者';
+      userEmail.value = userData.email || userData.mail || '';
+      
+      // 儲存到 localStorage（選用）
+      localStorage.setItem('username', username.value);
+      localStorage.setItem('userEmail', userEmail.value);
+      
+      console.log('使用者資訊:', { username: username.value, userEmail: userEmail.value });
+    } else {
+      throw new Error('無法解析使用者資訊');
+    }
+    
+  } catch (error) {
+    console.error('取得使用者資訊失敗:', error);
+    
+    // 嘗試從 localStorage 讀取
+    const cachedUsername = localStorage.getItem('username');
+    const cachedEmail = localStorage.getItem('userEmail');
+    
+    if (cachedUsername) {
+      username.value = cachedUsername;
+      userEmail.value = cachedEmail || '';
+      console.log('使用快取的使用者資訊');
+    } else {
+      // 使用假資料作為後備
+      username.value = '王小明';
+      userEmail.value = 'wang.xiaoming@company.com';
+      message.warning('無法取得使用者資訊，使用預設資料');
+    }
+  } finally {
+    loadingUserInfo.value = false;
+  }
+};
+
 // 處理使用者選單點擊
 const handleUserMenuClick = ({ key }) => {
   switch (key) {
-    case 'profile-settings':
-      message.info('個人資料功能開發中');
-      break;
-    case 'settings':
-      message.info('系統設定功能開發中');
-      break;
     case 'logout':
       handleLogout();
       break;
@@ -132,12 +184,20 @@ const handleUserMenuClick = ({ key }) => {
 
 const handleLogout = () => {
   message.success('登出成功！');
-  // 清除登入狀態（如果有使用 localStorage 或 session）
+  
+  // 清除登入狀態
   localStorage.removeItem('token');
   localStorage.removeItem('username');
   localStorage.removeItem('userEmail');
+  
+  // 導向登入頁
   router.push('/login');
 };
+
+// 頁面載入時取得使用者資訊
+onMounted(() => {
+  fetchUserInfo();
+});
 </script>
 
 <style scoped>

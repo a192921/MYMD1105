@@ -7,6 +7,29 @@
           <div class="logo-subtitle">Admin</div>
         </div>
       </div>
+
+      <!-- 使用者資訊卡片 -->
+      <div class="user-info-card" v-if="!loadingUserInfo">
+        <div class="user-avatar">
+          <UserOutlined />
+        </div>
+        <div class="user-details">
+          <div class="user-name">{{ username || '使用者' }}</div>
+          <div class="user-meta">
+            <div class="user-account-id">{{ accountId || '-' }}</div>
+            <div class="user-role-badge" :class="getRoleClass(role)">
+              {{ getRoleLabel(role) }}
+            </div>
+          </div>
+          <div class="user-email">{{ userEmail || '-' }}</div>
+        </div>
+      </div>
+
+      <!-- 載入中狀態 -->
+      <div class="user-info-card loading" v-else>
+        <a-spin />
+        <span style="margin-left: 12px; color: #94a3b8;">載入中...</span>
+      </div>
       
       <a-menu
         v-model:selectedKeys="selectedKeys"
@@ -44,30 +67,16 @@
         <component :is="currentComponent" />
       </a-layout-content>
 
-      <!-- 右上角使用者帳戶按鈕 -->
-      <div class="floating-user-button">
-        <a-dropdown placement="bottomRight" :trigger="['click']">
-          <a-button class="user-button" size="large" :loading="loadingUserInfo">
-            <UserOutlined v-if="!loadingUserInfo" />
-            <span class="username">{{ username || '載入中...' }}</span>
-            <DownOutlined style="margin-left: 4px; font-size: 12px" />
-          </a-button>
-          <template #overlay>
-            <a-menu class="user-menu" @click="handleUserMenuClick">
-              <a-menu-item key="profile" disabled>
-                <div class="user-info">
-                  <div class="user-name">{{ username || '使用者' }}</div>
-                  <div class="user-email">{{ userEmail || '載入中...' }}</div>
-                </div>
-              </a-menu-item>
-              <a-menu-divider />
-              <a-menu-item key="logout">
-                <LogoutOutlined style="margin-right: 8px; color: #ef4444" />
-                <span style="color: #ef4444">登出</span>
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
+      <!-- 右上角登出按鈕 -->
+      <div class="floating-logout-button">
+        <a-button 
+          class="logout-button" 
+          size="large"
+          @click="handleLogout"
+        >
+          <LogoutOutlined />
+          <span>登出</span>
+        </a-button>
       </div>
     </a-layout>
   </a-layout>
@@ -85,7 +94,6 @@ import {
   FileTextOutlined,
   LogoutOutlined,
   UserOutlined,
-  DownOutlined,
 } from '@ant-design/icons-vue';
 import { api } from '../utils/api';
 import Overview from '../components/Overview.vue';
@@ -100,6 +108,8 @@ const selectedKeys = ref(['overview']);
 // 使用者資訊
 const username = ref('');
 const userEmail = ref('');
+const role = ref('');
+const accountId = ref('');
 const loadingUserInfo = ref(false);
 
 const components = {
@@ -141,12 +151,21 @@ const fetchUserInfo = async () => {
       // 根據實際 API 欄位名稱調整
       username.value = userData.displayName || userData.username || userData.name || '使用者';
       userEmail.value = userData.email || userData.mail || '';
+      role.value = userData.role || '';
+      accountId.value = userData.accountId || userData.employeeId || '';
       
       // 儲存到 localStorage（選用）
       localStorage.setItem('username', username.value);
       localStorage.setItem('userEmail', userEmail.value);
+      localStorage.setItem('role', role.value);
+      localStorage.setItem('accountId', accountId.value);
       
-      console.log('使用者資訊:', { username: username.value, userEmail: userEmail.value });
+      console.log('使用者資訊:', { 
+        username: username.value, 
+        userEmail: userEmail.value,
+        role: role.value,
+        accountId: accountId.value
+      });
     } else {
       throw new Error('無法解析使用者資訊');
     }
@@ -157,28 +176,25 @@ const fetchUserInfo = async () => {
     // 嘗試從 localStorage 讀取
     const cachedUsername = localStorage.getItem('username');
     const cachedEmail = localStorage.getItem('userEmail');
+    const cachedRole = localStorage.getItem('role');
+    const cachedAccountId = localStorage.getItem('accountId');
     
     if (cachedUsername) {
       username.value = cachedUsername;
       userEmail.value = cachedEmail || '';
+      role.value = cachedRole || '';
+      accountId.value = cachedAccountId || '';
       console.log('使用快取的使用者資訊');
     } else {
       // 使用假資料作為後備
       username.value = '王小明';
       userEmail.value = 'wang.xiaoming@company.com';
+      role.value = 'admin';
+      accountId.value = 'A12345';
       message.warning('無法取得使用者資訊，使用預設資料');
     }
   } finally {
     loadingUserInfo.value = false;
-  }
-};
-
-// 處理使用者選單點擊
-const handleUserMenuClick = ({ key }) => {
-  switch (key) {
-    case 'logout':
-      handleLogout();
-      break;
   }
 };
 
@@ -189,9 +205,31 @@ const handleLogout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('username');
   localStorage.removeItem('userEmail');
+  localStorage.removeItem('role');
+  localStorage.removeItem('accountId');
   
   // 導向登入頁
   router.push('/login');
+};
+
+// 取得角色樣式
+const getRoleClass = (roleValue) => {
+  const roleMap = {
+    'admin': 'role-admin',
+    'manager': 'role-manager',
+    'user': 'role-user',
+  };
+  return roleMap[roleValue] || 'role-default';
+};
+
+// 取得角色標籤
+const getRoleLabel = (roleValue) => {
+  const labelMap = {
+    'admin': '管理員',
+    'manager': '管理者',
+    'user': '一般使用者',
+  };
+  return labelMap[roleValue] || '使用者';
 };
 
 // 頁面載入時取得使用者資訊
@@ -272,15 +310,15 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-/* 右上角使用者按鈕 */
-.floating-user-button {
+/* 右上角登出按鈕 */
+.floating-logout-button {
   position: fixed;
   top: 24px;
   right: 24px;
   z-index: 1000;
 }
 
-.user-button {
+.logout-button {
   height: 44px;
   padding: 0 16px;
   font-size: 15px;
@@ -295,82 +333,121 @@ onMounted(() => {
   transition: all 0.3s ease;
 }
 
-.user-button:hover {
-  background: #f9fafb !important;
-  border-color: #d1d5db !important;
+.logout-button:hover {
+  background: #fef2f2 !important;
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15);
 }
 
-.user-button .anticon-user {
-  font-size: 16px;
-  color: #667eea;
+/* 使用者資訊卡片 */
+.user-info-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid rgba(148, 163, 184, 0.1);
 }
 
-.username {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #1f2937;
+.user-info-card.loading {
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
 }
 
-.user-button .anticon-down {
-  color: #9ca3af;
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-/* 使用者下拉選單 */
-.user-menu {
-  min-width: 220px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 8px;
+.user-avatar .anticon {
+  font-size: 24px;
+  color: white;
 }
 
-.user-info {
-  padding: 8px 4px;
+.user-details {
+  flex: 1;
+  min-width: 0;
 }
 
 .user-name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 4px;
+  color: #ffffff;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.user-account-id {
+  font-size: 13px;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+  font-weight: 500;
+}
+
+.user-role-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.user-role-badge.role-admin {
+  background: #ef4444;
+  color: white;
+}
+
+.user-role-badge.role-manager {
+  background: #f59e0b;
+  color: white;
+}
+
+.user-role-badge.role-user {
+  background: #10b981;
+  color: white;
+}
+
+.user-role-badge.role-default {
+  background: #6b7280;
+  color: white;
 }
 
 .user-email {
-  font-size: 13px;
-  color: #6b7280;
-  word-break: break-all;
-}
-
-.user-menu :deep(.ant-dropdown-menu-item) {
-  padding: 10px 12px;
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.user-menu :deep(.ant-dropdown-menu-item:hover) {
-  background: #f3f4f6;
-}
-
-.user-menu :deep(.ant-dropdown-menu-item-disabled) {
-  cursor: default;
-}
-
-.user-menu :deep(.ant-dropdown-menu-item-disabled:hover) {
-  background: transparent;
+  font-size: 12px;
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 響應式設計 */
 @media (max-width: 768px) {
-  .floating-user-button {
+  .floating-logout-button {
     top: 16px;
     right: 16px;
-  }
-
-  .username {
-    max-width: 80px;
   }
 }
 </style>

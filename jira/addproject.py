@@ -4,6 +4,22 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 
+'''
+幫我用python tkinter 建立一個可以一次建立多個專案的自動化程式
+登入 jira 的帳號密碼，後提供使用者填選以下資訊
+FIELD_SOURCE_PROJECT: 
+FIELD_TARGET_PROJECT:（規則為AWS_project_IPC2/AWS_project_IPC3/AWS_project_IPC4....）
+FIELD_TARGET_PROJECT_NAME: （規則為AWS_N12263_CO/AWS_N12264_CO/AWS_N12265_CO....）
+FIELD_COPY_COMPONENT: （以勾選的方式，若勾選post "on"，若未勾選不回傳）
+生成的專案數量：
+
+建立專案所需的資訊
+FIELD_COPY_COMPONENT: "on"
+FIELD_SOURCE_PROJECT: "EMPTY_PROJECT"
+FIELD_TARGET_PROJECT: "AWS_project_IPC2"
+FIELD_TARGET_PROJECT_NAME: "AWS_N12263_CO"
+canned-script: "com.onresolve.scriptrunner.canned.jira.admin.CopyProject"
+'''
 class JiraBatchCreatorApp:
     def __init__(self, root):
         self.root = root

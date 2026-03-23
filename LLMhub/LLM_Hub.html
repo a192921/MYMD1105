@@ -1,0 +1,184 @@
+<!-- 幫我建構 公司內部可以參閱的LLM hub html網頁
+
+資料分別包含 網段、模型名稱、API Getway、後端節點數、用途、備註 -->
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 我們的 LLM 能量站</title>
+    <style>
+        /* 活潑的漸層背景 */
+        body {
+            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #2d3436;
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: #4834d4;
+            margin: 0;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            background: #f0f2f5;
+            display: inline-block;
+            padding: 5px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            color: #686de0;
+            margin-top: 10px;
+        }
+
+        /* 卡片式表格 */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 12px;
+        }
+
+        th {
+            padding: 15px;
+            color: #95a5a6;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 1px;
+        }
+
+        tr {
+            transition: transform 0.2s ease;
+        }
+
+        tr:hover {
+            transform: translateY(-3px);
+        }
+
+        td {
+            background: #fff;
+            padding: 20px;
+            border-top: 1px solid #f1f2f6;
+            border-bottom: 1px solid #f1f2f6;
+        }
+
+        /* 圓角處理 */
+        td:first-child { border-left: 1px solid #f1f2f6; border-radius: 15px 0 0 15px; }
+        td:last-child { border-right: 1px solid #f1f2f6; border-radius: 0 15px 15px 0; }
+
+        /* 模型名稱樣式 */
+        .model-name {
+            font-weight: 800;
+            color: #2f3542;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 標籤樣式 */
+        .badge {
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .badge-ip { background: #e0f7fa; color: #00838f; }
+        .badge-node { background: #fff3e0; color: #ef6c00; }
+
+        .api-link {
+            font-family: 'Consolas', monospace;
+            color: #eb4d4b;
+            background: #fff5f5;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            text-decoration: none;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: white;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🤖 LLM Hub 資源導覽</h1>
+        <div class="subtitle">✨ 讓 AI 成為我們最強的隊友</div>
+    </header>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>模型名稱</th>
+                    <th>存取網段</th>
+                    <th>API Gateway</th>
+                    <th>節點數</th>
+                    <th>用途介紹</th>
+                    <th>備註</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><div class="model-name">🧠 Llama-3-70B</div></td>
+                    <td><span class="badge badge-ip">10.120.x.x</span></td>
+                    <td><span class="api-link">/v1/llama3</span></td>
+                    <td><span class="badge badge-node">⚡ 4 Nodes</span></td>
+                    <td>最聰明的萬能大腦</td>
+                    <td>🔥 流量最高，請節約使用</td>
+                </tr>
+                <tr>
+                    <td><div class="model-name">🇹🇼 Taiwan-LLM</div></td>
+                    <td><span class="badge badge-ip">10.120.x.x</span></td>
+                    <td><span class="api-link">/v1/tw-llm</span></td>
+                    <td><span class="badge badge-node">⚡ 2 Nodes</span></td>
+                    <td>最懂台灣話的在地專家</td>
+                    <td>適合公文與在地客服</td>
+                </tr>
+                <tr>
+                    <td><div class="model-name">🔍 Embedding-V2</div></td>
+                    <td><span class="badge badge-ip">172.16.x.x</span></td>
+                    <td><span class="api-link">/v1/embed</span></td>
+                    <td><span class="badge badge-node">⚡ 6 Nodes</span></td>
+                    <td>RAG 知識庫的引路人</td>
+                    <td>檢索速度超快！</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<footer>
+    🛠️ 由資訊組精心打造 • 祝你有個 productive 的一天！
+</footer>
+
+</body>
+</html>

@@ -11,3 +11,6 @@ export default defineConfig({
     open: true, // 啟動時自動打開瀏覽器
   }
 })
+
+
+
